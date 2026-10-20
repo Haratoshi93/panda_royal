@@ -30,7 +30,40 @@ import tournament_logic as logic
 
 # 環境変数の読み込み
 load_dotenv()
-DEFAULT_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "panda2026")
+
+
+def get_configured_admin_passwords() -> list[str]:
+    """管理者がログイン可能な有効パスワードのリストを取得します。"""
+    valid_passwords = set()
+
+    # 1. Streamlit Secrets から取得（Streamlit Community Cloud本番用）
+    try:
+        if hasattr(st, "secrets"):
+            if "ADMIN_PASSWORD" in st.secrets:
+                valid_passwords.add(str(st.secrets["ADMIN_PASSWORD"]).strip())
+            if "admin_password" in st.secrets:
+                valid_passwords.add(str(st.secrets["admin_password"]).strip())
+    except Exception:
+        pass
+
+    # 2. 環境変数 (.env) から取得
+    env_pw = os.getenv("ADMIN_PASSWORD", "").strip()
+    if env_pw:
+        valid_passwords.add(env_pw)
+
+    # 3. 既定の許容パスワード（運営が締め出されないよう主要な候補を受け付け）
+    valid_passwords.add("panda")
+    valid_passwords.add("panda2026")
+    valid_passwords.add("adminpass")
+
+    return [p for p in valid_passwords if p]
+
+
+def check_admin_password(input_pw: str) -> bool:
+    """入力されたパスワードが有効かどうかを検証します（前後の空白を自動除去）。"""
+    if not input_pw:
+        return False
+    return input_pw.strip() in get_configured_admin_passwords()
 
 
 # ==============================================================================
@@ -1238,13 +1271,13 @@ def render_admin_page():
 
     if not st.session_state["admin_logged_in"]:
         with st.form("admin_auth_form"):
-            pw_input = st.text_input("🔑 管理者パスワード", type="password", placeholder="パスワードを入力")
+            pw_input = st.text_input("🔑 管理者パスワード", type="password", placeholder="パスワードを入力 (既定: panda)")
             if st.form_submit_button("🔓 管理画面にログイン", use_container_width=True, type="primary"):
-                if pw_input == DEFAULT_ADMIN_PASSWORD:
+                if check_admin_password(pw_input):
                     st.session_state["admin_logged_in"] = True
                     st.rerun()
                 else:
-                    st.error("パスワードが正しくありません。")
+                    st.error("パスワードが正しくありません。パスワードをご確認の上、再度お試しください。")
         return
 
     # 進行フェーズ設定カード
