@@ -84,7 +84,7 @@ def init_db() -> None:
         ("admin_limit_champion", "3"),
         ("current_round", "予選1"),
         ("current_phase", "エントリーフェーズ"),
-        ("custom_access_url", ""),
+        ("custom_access_url", "https://panda-royal.streamlit.app/"),
     ]
     for key, value in default_settings:
         cursor.execute(
