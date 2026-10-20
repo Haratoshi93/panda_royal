@@ -772,7 +772,6 @@ def render_phase_entry():
     with st.form("phase_entry_form", clear_on_submit=True):
         tsunagate_id = st.text_input("つなげーとID (必須)", placeholder="例: panda_1234")
         player_name = st.text_input("ニックネーム / 表示名 (必須)", placeholder="例: たろう")
-        st.caption("※登録時は「一般参加」となります（運営スタッフの区分変更は管理画面で行います）")
 
         submitted = st.form_submit_button("✅ 大会にエントリーする", use_container_width=True, type="primary")
 
