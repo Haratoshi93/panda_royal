@@ -83,6 +83,7 @@ def init_db() -> None:
     default_settings = [
         ("admin_limit_champion", "3"),
         ("current_round", "予選1"),
+        ("current_phase", "エントリー"),
     ]
     for key, value in default_settings:
         cursor.execute(
@@ -356,5 +357,6 @@ def reset_all_data() -> None:
     cursor.execute("DELETE FROM players")
     cursor.execute("UPDATE app_settings SET value = '3' WHERE key = 'admin_limit_champion'")
     cursor.execute("UPDATE app_settings SET value = '予選1' WHERE key = 'current_round'")
+    cursor.execute("UPDATE app_settings SET value = 'エントリー' WHERE key = 'current_phase'")
     conn.commit()
     conn.close()
