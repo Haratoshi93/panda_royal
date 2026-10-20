@@ -15,9 +15,12 @@
 8. 結果発表（最終スコア表示）
 """
 
+import io
 import os
 import random
+import socket
 import pandas as pd
+import qrcode
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -27,6 +30,47 @@ import tournament_logic as logic
 # 環境変数の読み込み
 load_dotenv()
 DEFAULT_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "panda2026")
+
+
+# ==============================================================================
+# ネットワーク & QRコード ユーティリティ
+# ==============================================================================
+def get_local_ip() -> str:
+    """マシンのローカルIPアドレスを取得します。"""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "localhost"
+
+
+def get_current_access_url() -> str:
+    """参加者がアクセスする有効なURLを取得します。カスタムURLが設定されていればそれを優先します。"""
+    custom_url = db.get_setting("custom_access_url", "").strip()
+    if custom_url:
+        return custom_url
+    local_ip = get_local_ip()
+    return f"http://{local_ip}:8501"
+
+
+def generate_qr_code_image(url: str) -> bytes:
+    """指定されたURLのQRコードPNG画像を生成します。"""
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        box_size=10,
+        border=3,
+    )
+    qr.add_data(url)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="#1E293B", back_color="#FFFFFF")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
 
 # 大会進行フェーズ定義（ご指定の8ステップ）
 PHASE_ENTRY = "エントリーフェーズ"
@@ -232,6 +276,7 @@ def render_header_and_nav():
         "🏠 大会ホーム",
         "📊 総合順位",
         "🪑 座席表一覧",
+        "📱 参加用QR",
         "⚙️ 管理者ページ",
     ]
 
@@ -800,6 +845,59 @@ def render_seats_page():
 
 
 # ==============================================================================
+# サブ画面: 参加用QRコード (プロジェクター投影・スマホ読み取り用)
+# ==============================================================================
+def render_qr_page():
+    st.markdown("### 📱 参加用QRコード")
+    st.caption("スマホのカメラでこのQRコードを読み取って大会にご参加ください！")
+
+    access_url = get_current_access_url()
+    qr_bytes = generate_qr_code_image(access_url)
+
+    # プロジェクター投影向け大型カード
+    st.markdown(
+        f"""
+        <div style="background-color: #FFFFFF; border-radius: 20px; border: 2px solid #E2E8F0; padding: 1.5rem 1rem; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); margin-bottom: 1.2rem;">
+            <div style="font-size: 1.3rem; font-weight: 800; color: #1E293B; margin-bottom: 0.5rem;">
+                🐼 パンダロイヤル 大会アクセス
+            </div>
+            <div style="display: flex; justify-content: center; margin: 1rem 0;">
+                <img src="data:image/png;base64,{pd.Series(qr_bytes).apply(lambda x: __import__('base64').b64encode(x).decode()).iloc[0]}" style="width: 260px; height: 260px; border-radius: 12px; border: 1px solid #E2E8F0;" />
+            </div>
+            <div style="background-color: #F8FAFC; border-radius: 8px; padding: 0.6rem; font-family: monospace; font-size: 0.9rem; color: #3B82F6; word-break: break-all; margin: 0.8rem 0;">
+                {access_url}
+            </div>
+            <div style="font-size: 0.85rem; color: #64748B;">
+                📷 スマートフォンの標準カメラアプリで読み取れます
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    # ダウンロードボタン
+    st.download_button(
+        "📥 QRコード画像をダウンロード (印刷・LINE配布用)",
+        data=qr_bytes,
+        file_name="panda_royal_qr.png",
+        mime="image/png",
+        use_container_width=True,
+        type="primary",
+    )
+
+    st.markdown("---")
+    with st.expander("ℹ️ 接続に関するヒント"):
+        st.markdown(
+            """
+            - **同じWi-Fi（またはテザリング）に接続している場合**:
+              パソコンとスマホが同じWi-Fiに繋がっていれば、上記QRコードからそのままアクセスできます。
+            - **参加者が自分のモバイル通信（4G/5G）で繋ぐ場合**:
+              Cloudflare Tunnel などの無料トンネリングツールを利用して発行された公開URL（https://...）を「管理者ページ」で設定すると、どの回線からでもQRコードでアクセスできます。
+            """
+        )
+
+
+# ==============================================================================
 # 画面4: 管理者ページ (8フェーズ設定コントロール搭載)
 # ==============================================================================
 def render_admin_page():
@@ -881,6 +979,7 @@ def render_admin_page():
         "👥 タグ付け",
         "🎯 座席抽選",
         "📊 入力進捗",
+        "📱 QR・URL設定",
         "🛠️ テスト/初期化",
     ])
 
@@ -1003,8 +1102,51 @@ def render_admin_page():
                 unentered = [s["player_name"] for s in r_seats if s["player_id"] not in entered_pids]
                 st.caption(f"未入力: {', '.join(unentered)}")
 
-    # タブ4: リハーサル/初期化
+    # タブ4: 参加用QR・URL設定
     with admin_tabs[3]:
+        st.markdown("##### 📱 参加用アクセスURL & QRコード設定")
+        st.caption("参加者がスマートフォンからアクセスするためのURLを設定・確認できます。")
+
+        current_url = get_current_access_url()
+        custom_saved_url = db.get_setting("custom_access_url", "")
+
+        st.markdown(f"**現在のアクセスURL:** `{current_url}`")
+        if custom_saved_url:
+            st.success("🌐 外部公開カスタムURLが適用されています。")
+        else:
+            st.info("📶 ローカルWi-Fi用の内部IPアドレスが適用されています。")
+
+        # QRコードのミニプレビュー
+        qr_preview = generate_qr_code_image(current_url)
+        st.image(qr_preview, width=180, caption="現在の参加用QRコード")
+
+        st.markdown("---")
+        st.markdown("###### 🌐 外部公開URL（Cloudflare Tunnel 等）の手動設定")
+        st.caption(
+            "会場Wi-Fiに繋がず参加者自身のスマホ回線（4G/5G）からアクセスさせたい場合は、"
+            "Cloudflare Tunnel 等で発行された公開URL（例: `https://xxxx.trycloudflare.com`）をここに入力して保存してください。"
+        )
+
+        with st.form("custom_url_form"):
+            input_custom_url = st.text_input("外部公開URL", value=custom_saved_url, placeholder="https://xxxx.trycloudflare.com")
+            col_u1, col_u2 = st.columns(2)
+            with col_u1:
+                save_url_btn = st.form_submit_button("💾 URLを保存する", use_container_width=True, type="primary")
+            with col_u2:
+                reset_url_btn = st.form_submit_button("🔄 ローカルIPに戻す", use_container_width=True)
+
+            if save_url_btn:
+                db.set_setting("custom_access_url", input_custom_url.strip())
+                st.success("アクセスURLを更新しました！QRコードが即時再生成されます。")
+                st.rerun()
+
+            if reset_url_btn:
+                db.set_setting("custom_access_url", "")
+                st.success("ローカルIPアドレスのURLに戻しました。")
+                st.rerun()
+
+    # タブ5: リハーサル/初期化
+    with admin_tabs[4]:
         st.markdown("##### 🧪 リハーサル用ダミーデータ")
         if st.button("👥 30名のダミープレイヤーを一括作成", use_container_width=True):
             admin_names = ["運営A", "運営B", "運営C", "運営D", "運営E"]
@@ -1069,9 +1211,12 @@ def main():
         render_ranking_page()
     elif selected_menu == "🪑 座席表一覧":
         render_seats_page()
+    elif selected_menu == "📱 参加用QR":
+        render_qr_page()
     elif selected_menu == "⚙️ 管理者ページ":
         render_admin_page()
 
 
 if __name__ == "__main__":
     main()
+
