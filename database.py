@@ -155,6 +155,25 @@ def get_all_players() -> List[Dict[str, Any]]:
     return rows
 
 
+def update_player_role(player_id: int, role: str) -> None:
+    """参加者の属性（運営: admin / 一般: general）を更新します。"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE players SET role = ? WHERE id = ?", (role, player_id))
+    conn.commit()
+    conn.close()
+
+
+def update_player_roles_bulk(role_dict: Dict[int, str]) -> None:
+    """複数の参加者の属性を一括更新します。"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    for player_id, role in role_dict.items():
+        cursor.execute("UPDATE players SET role = ? WHERE id = ?", (role, player_id))
+    conn.commit()
+    conn.close()
+
+
 def delete_player(player_id: int) -> None:
     """参加者を削除します（関連する座席・スコアも外部キーにより削除されます）。"""
     conn = get_connection()
@@ -163,6 +182,7 @@ def delete_player(player_id: int) -> None:
     cursor.execute("DELETE FROM players WHERE id = ?", (player_id,))
     conn.commit()
     conn.close()
+
 
 
 # ==========================================

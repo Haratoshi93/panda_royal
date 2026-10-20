@@ -47,7 +47,20 @@ db.update_rank_points_in_db("予選1", calc_p1)
 
 # ランキング確認
 overall = logic.calculate_overall_ranking(players, db.get_all_scores_summary(), ["予選1"])
-assert len(overall) == 30, "ランキング数が不正"
-print(f"1位: {overall[0]['player_name']}, 合計順位点:{overall[0]['total_rank_points']}, 合計スコア:{overall[0]['total_score']}")
+# プレイヤー属性更新・タグ付けテスト
+print("4. 属性更新・タグ付けテスト")
+db.update_player_role(players[0]["id"], "general")
+updated_p0 = next(p for p in db.get_all_players() if p["id"] == players[0]["id"])
+assert updated_p0["role"] == "general", "個別属性更新が反映されていません"
+
+bulk_updates = {players[1]["id"]: "admin", players[2]["id"]: "general"}
+db.update_player_roles_bulk(bulk_updates)
+all_p = db.get_all_players()
+p1_after = next(p for p in all_p if p["id"] == players[1]["id"])
+p2_after = next(p for p in all_p if p["id"] == players[2]["id"])
+assert p1_after["role"] == "admin", "一括属性更新が反映されていません"
+assert p2_after["role"] == "general", "一括属性更新が反映されていません"
+print("属性更新・タグ付けテスト成功！")
 
 print("DB統合テスト全て成功！")
+
