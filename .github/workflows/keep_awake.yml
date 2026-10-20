@@ -1,0 +1,88 @@
+name: Keep Streamlit Awake
+
+# Streamlit Community Cloud puts apps to sleep after ~12 hours without visitors.
+# This workflow visits the app periodically using Playwright and clicks the wake-up button if shown.
+
+on:
+  schedule:
+    # Every 1 hour (UTC). Keeps the app awake and ready for the tournament.
+    - cron: '0 * * * *'
+    # Once a month: small commit so GitHub does not disable this schedule after 60 days of no activity.
+    - cron: '0 3 1 * *'
+  workflow_dispatch:
+
+jobs:
+  wake-app:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Visit app and wake it up if sleeping
+        env:
+          # Deploy URL on Streamlit Community Cloud (Set in GitHub Secrets or edit below)
+          APP_URL: ${{ secrets.APP_URL || 'https://panda-royal.streamlit.app/' }}
+        run: |
+          cat > wake.py << 'EOF'
+          import os
+          from playwright.sync_api import sync_playwright
+
+          url = os.environ.get("APP_URL", "https://panda-royal.streamlit.app/")
+          print(f"Connecting to: {url}")
+          
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page()
+              
+              try:
+                  page.goto(url, timeout=60000)
+                  button = page.locator("button:has-text('Yes, get this app back up')")
+                  button.wait_for(state="visible", timeout=30000)
+                  if button.is_visible():
+                      print("App was sleeping. Clicking wake-up button...")
+                      button.first.click()
+                      page.wait_for_timeout(45000)
+                      print("Wake-up button successfully clicked.")
+              except Exception as e:
+                  print(f"App is awake or button not displayed: {e}")
+                  page.screenshot(path="debug_screenshot.png")
+                  with open("debug.html", "w", encoding="utf-8") as f:
+                      f.write(page.content())
+              
+              browser.close()
+          EOF
+          python wake.py
+
+      - name: Upload debug screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-screenshots
+          path: |
+            debug_screenshot.png
+            debug.html
+          retention-days: 7
+
+  monthly-keepalive-commit:
+    if: github.event.schedule == '0 3 1 * *'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Commit timestamp
+        run: |
+          echo "Last run: $(date -u)" > .github/keepalive.txt
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .github/keepalive.txt
+          git commit -m "chore: monthly keep-alive" || exit 0
+          git push

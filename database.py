@@ -361,3 +361,25 @@ def reset_all_data() -> None:
     cursor.execute("UPDATE app_settings SET value = 'エントリー' WHERE key = 'current_phase'")
     conn.commit()
     conn.close()
+
+
+def get_db_bytes() -> bytes:
+    """現在のSQLiteデータベースファイルのバイナリデータを取得します（バックアップダウンロード用）。"""
+    if os.path.exists(DB_PATH):
+        with open(DB_PATH, "rb") as f:
+            return f.read()
+    return b""
+
+
+def restore_db_from_bytes(data: bytes) -> bool:
+    """アップロードされたバイナリデータでデータベースファイルを復元・置換します。"""
+    try:
+        with open(DB_PATH, "wb") as f:
+            f.write(data)
+        # 接続確認と初期化チェック
+        init_db()
+        return True
+    except Exception as e:
+        print(f"Restore DB error: {e}")
+        return False
+

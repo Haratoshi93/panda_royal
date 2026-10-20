@@ -1145,8 +1145,36 @@ def render_admin_page():
                 st.success("ローカルIPアドレスのURLに戻しました。")
                 st.rerun()
 
-    # タブ5: リハーサル/初期化
+    # タブ5: バックアップ/初期化
     with admin_tabs[4]:
+        st.markdown("##### 💾 データベースのバックアップ & 復元")
+        st.caption(
+            "Streamlit Community Cloud などのクラウド環境で運用する場合、"
+            "定期的にバックアップをダウンロードしておくことで、万が一の再起動時にも即座にデータを完全復元できます。"
+        )
+
+        col_b1, col_b2 = st.columns(2)
+        with col_b1:
+            db_bytes = db.get_db_bytes()
+            st.download_button(
+                label="📥 DBバックアップを保存 (.db)",
+                data=db_bytes,
+                file_name="panda_royal_backup.db",
+                mime="application/octet-stream",
+                use_container_width=True,
+            )
+        with col_b2:
+            uploaded_db = st.file_uploader("📤 バックアップから復元", type=["db"], label_visibility="collapsed")
+            if uploaded_db is not None:
+                if st.button("🔄 このバックアップで復元する", type="primary", use_container_width=True):
+                    file_bytes = uploaded_db.read()
+                    if db.restore_db_from_bytes(file_bytes):
+                        st.success("✅ データベースを復元しました！")
+                        st.rerun()
+                    else:
+                        st.error("❌ データベースの復元に失敗しました。")
+
+        st.markdown("---")
         st.markdown("##### 🧪 リハーサル用ダミーデータ")
         if st.button("👥 30名のダミープレイヤーを一括作成", use_container_width=True):
             admin_names = ["運営A", "運営B", "運営C", "運営D", "運営E"]
