@@ -15,6 +15,7 @@
 8. 結果発表（最終スコア表示）
 """
 
+import base64
 import io
 import os
 import random
@@ -66,13 +67,13 @@ def generate_qr_code_image(url: str) -> bytes:
     )
     qr.add_data(url)
     qr.make(fit=True)
-    img = qr.make_image(fill_color="#1E293B", back_color="#FFFFFF")
+    img = qr.make_image(fill_color="#0F172A", back_color="#FFFFFF")
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
 
 
-# 大会進行フェーズ定義（ご指定の8ステップ）
+# 大会進行フェーズ定義（8ステップ）
 PHASE_ENTRY = "エントリーフェーズ"
 PHASE_PRELIM1_SEAT = "予選１　準備（席替え表示）"
 PHASE_PRELIM1_SCORE = "予選１　結果入力"
@@ -93,9 +94,27 @@ ALL_PHASES = [
     PHASE_RESULT,
 ]
 
+# 卓ごとのカラーテーマ定義
+TABLE_THEMES = {
+    "A卓": {"bg": "#EFF6FF", "border": "#93C5FD", "accent": "#2563EB", "badge": "🟦 A卓"},
+    "B卓": {"bg": "#ECFDF5", "border": "#6EE7B7", "accent": "#059669", "badge": "🟩 B卓"},
+    "C卓": {"bg": "#F5F3FF", "border": "#C4B5FD", "accent": "#7C3AED", "badge": "🟪 C卓"},
+    "チャンピオン卓": {"bg": "#FFFBEB", "border": "#FCD34D", "accent": "#D97706", "badge": "👑 チャンピオン卓"},
+    "シルバー卓": {"bg": "#F8FAFC", "border": "#CBD5E1", "accent": "#475569", "badge": "🥈 シルバー卓"},
+    "ブロンズ卓": {"bg": "#FFF7ED", "border": "#FDBA74", "accent": "#EA580C", "badge": "🥉 ブロンズ卓"},
+}
+
+
+def get_table_theme(table_name: str) -> dict:
+    return TABLE_THEMES.get(
+        table_name,
+        {"bg": "#EFF6FF", "border": "#93C5FD", "accent": "#4F46E5", "badge": f"🎲 {table_name}"},
+    )
+
+
 # ページ基本設定（スマホ画面に最適化）
 st.set_page_config(
-    page_title="パンダロイヤル",
+    page_title="パンダロイヤル 大会マネージャー",
     page_icon="🐼",
     layout="centered",
     initial_sidebar_state="collapsed",
@@ -104,280 +123,470 @@ st.set_page_config(
 # データベース初期化
 db.init_db()
 
-# モバイルファースト＆モダンWebアプリCSS定義
+# ==============================================================================
+# モバイルファースト＆ダークモード完全対応 カスタムCSS
+# ==============================================================================
 st.markdown(
     """
     <style>
-    /* Streamlit標準のヘッダー・フッター・ツールバーを非表示にし、ネイティブアプリ化 */
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    header[data-testid="stHeader"] {
-        display: none !important;
-    }
-    [data-testid="stToolbar"] {
-        display: none !important;
-    }
+    /* 1. Streamlit標準ヘッダー・フッター・バッジの非表示化 */
+    #MainMenu {visibility: hidden !important;}
+    footer {visibility: hidden !important;}
+    header[data-testid="stHeader"] {display: none !important;}
+    .stApp > header {display: none !important;}
+    [data-testid="stToolbar"] {display: none !important;}
+    [data-testid="stDecoration"] {display: none !important;}
+
+    /* 2. コンテナ余白と最大幅（スマホ片手操作に最適化、下部バッジ被り防止） */
     .block-container {
-        padding-top: 1.2rem !important;
-        padding-bottom: 3rem !important;
-        padding-left: 0.9rem !important;
-        padding-right: 0.9rem !important;
-        max-width: 600px !important;
+        padding-top: 0.8rem !important;
+        padding-bottom: 5.5rem !important;
+        padding-left: 0.85rem !important;
+        padding-right: 0.85rem !important;
+        max-width: 540px !important;
         margin: 0 auto !important;
     }
 
-    /* アプリ全体の背景とベースフォント */
-    .stApp {
-        background-color: #F8FAFC !important;
+    /* 3. OSのダークモード設定に関わらず明るく見やすい配色を強制維持 */
+    :root {
+        color-scheme: light !important;
+    }
+    .stApp, [data-testid="stAppViewContainer"], [data-testid="stMain"] {
+        background-color: #F1F5F9 !important;
+        color: #0F172A !important;
     }
     html, body, [class*="css"] {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
-        color: #1E293B;
+        font-family: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Segoe UI", sans-serif !important;
+        color: #0F172A !important;
     }
 
-    /* アプリ共通ヘッダー */
-    .app-header {
-        text-align: center;
-        padding: 0.2rem 0 0.8rem 0;
-        margin-bottom: 0.4rem;
+    /* 全ての標準テキスト・見出し・ラベル・キャプションの文字色を明示固定（白飛び防止） */
+    h1, h2, h3, h4, h5, h6,
+    [data-testid="stMarkdownContainer"] p,
+    [data-testid="stMarkdownContainer"] li,
+    [data-testid="stWidgetLabel"] p,
+    label p {
+        color: #0F172A !important;
     }
-    .app-title {
-        font-size: 1.6rem;
-        font-weight: 800;
-        color: #0F172A;
-        letter-spacing: -0.5px;
+    [data-testid="stCaptionContainer"] p,
+    .stCaption {
+        color: #64748B !important;
+        font-size: 0.82rem !important;
+    }
+
+    /* 4. ヒーローヘッダー＆ステップバー */
+    .hero-card {
+        background: linear-gradient(135deg, #0F172A 0%, #1E293B 100%);
+        color: #FFFFFF !important;
+        border-radius: 20px;
+        padding: 1.1rem 1rem 1rem 1rem;
+        margin-bottom: 0.75rem;
+        box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.25);
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    .hero-brand {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        margin-bottom: 0.2rem;
+    }
+    .hero-title {
+        font-size: 1.4rem;
+        font-weight: 900;
+        color: #FFFFFF !important;
+        letter-spacing: 0.5px;
         margin: 0;
     }
-    .app-subtitle {
-        font-size: 0.82rem;
-        color: #64748B;
-        margin-top: 2px;
-        font-weight: 500;
+    .hero-sub {
+        font-size: 0.75rem;
+        color: #94A3B8 !important;
+        font-weight: 600;
+        letter-spacing: 1px;
+        margin-bottom: 0.65rem;
     }
-    
-    /* フェーズステータスバナー */
-    .phase-badge-container {
+    .phase-pill {
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 6px;
-        color: white;
-        padding: 0.4rem 1.2rem;
+        padding: 0.38rem 1rem;
         border-radius: 9999px;
-        font-size: 0.88rem;
-        font-weight: 700;
-        margin-top: 0.5rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.12);
+        font-size: 0.84rem;
+        font-weight: 800;
+        color: #FFFFFF !important;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.2);
+        margin-bottom: 0.75rem;
     }
-    .phase-badge-entry { background: linear-gradient(135deg, #2563EB, #1D4ED8); }
-    .phase-badge-seat { background: linear-gradient(135deg, #7C3AED, #6D28D9); }
-    .phase-badge-score { background: linear-gradient(135deg, #EA580C, #C2410C); }
-    .phase-badge-result { background: linear-gradient(135deg, #DC2626, #991B1B); }
+    .pill-entry { background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%); }
+    .pill-seat  { background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%); }
+    .pill-score { background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%); }
+    .pill-result{ background: linear-gradient(135deg, #EF4444 0%, #DC2626 100%); }
 
-    /* ラジオボタンをタップしやすいモダンなタブバーへ変形 */
-    div[role="radiogroup"] {
-        display: flex !important;
-        flex-direction: row !important;
-        justify-content: space-between !important;
-        background: #E2E8F0 !important;
-        padding: 5px !important;
-        border-radius: 14px !important;
-        gap: 4px !important;
-        margin-bottom: 1.2rem !important;
-        border: 1px solid #CBD5E1 !important;
+    /* 5段階ステップインジケーター */
+    .stepper-row {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 4px;
+        padding-top: 0.55rem;
+        border-top: 1px solid rgba(255, 255, 255, 0.12);
     }
-    div[role="radiogroup"] > label {
-        flex: 1 1 0 !important;
+    .step-item {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 3px;
+    }
+    .step-bar {
+        width: 100%;
+        height: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.18);
+    }
+    .step-done .step-bar { background: #34D399; }
+    .step-active .step-bar { background: #60A5FA; box-shadow: 0 0 8px #60A5FA; }
+    .step-label {
+        font-size: 0.68rem;
+        font-weight: 700;
+        color: #64748B !important;
+    }
+    .step-done .step-label { color: #A7F3D0 !important; }
+    .step-active .step-label { color: #FFFFFF !important; font-weight: 800; }
+
+    /* 5. ナビゲーションバー（100%横幅・5等分グリッドタブ） */
+    [data-testid="stElementContainer"]:has([data-testid="stRadio"]),
+    div[data-testid="stRadio"],
+    div[data-testid="stRadio"] > div {
+        width: 100% !important;
+    }
+    div[role="radiogroup"] {
+        display: grid !important;
+        grid-template-columns: repeat(5, 1fr) !important;
+        width: 100% !important;
+        background: #FFFFFF !important;
+        padding: 5px !important;
+        border-radius: 16px !important;
+        gap: 4px !important;
+        margin-bottom: 1rem !important;
+        border: 1px solid #E2E8F0 !important;
+        box-shadow: 0 2px 8px rgba(15, 23, 42, 0.05) !important;
+        box-sizing: border-box !important;
+    }
+    div[role="radiogroup"] > div {
+        width: 100% !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        display: flex !important;
+    }
+    div[role="radiogroup"] label {
+        width: 100% !important;
+        min-width: 0 !important;
+        margin: 0 !important;
+        padding: 8px 2px !important;
         background: transparent !important;
-        border-radius: 10px !important;
-        padding: 8px 4px !important;
-        font-weight: 700 !important;
-        font-size: 0.82rem !important;
+        border-radius: 11px !important;
         cursor: pointer !important;
-        transition: all 0.15s ease-in-out !important;
+        transition: all 0.15s ease !important;
         border: none !important;
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
         text-align: center !important;
-        color: #475569 !important;
+        box-sizing: border-box !important;
+    }
+    div[role="radiogroup"] label:hover {
+        background: #F1F5F9 !important;
+    }
+    div[role="radiogroup"] label > div {
+        width: 100% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
         margin: 0 !important;
     }
-    div[role="radiogroup"] > label:hover {
-        background: rgba(255, 255, 255, 0.6) !important;
-        color: #0F172A !important;
-    }
-    /* ラジオボタンの丸印を完全に非表示 */
+    /* ラジオボタンの丸ポチのみを消去 */
     div[role="radiogroup"] label > div > div:first-child:not([data-testid="stMarkdownContainer"]) {
         display: none !important;
     }
-    div[role="radiogroup"] label > div {
+    div[role="radiogroup"] label [data-testid="stMarkdownContainer"] {
+        width: 100% !important;
+        text-align: center !important;
         display: flex !important;
         justify-content: center !important;
         align-items: center !important;
-        width: 100% !important;
     }
-    div[role="radiogroup"] label p {
+    div[role="radiogroup"] label [data-testid="stMarkdownContainer"] p {
         margin: 0 !important;
-        font-size: 0.84rem !important;
-        font-weight: 700 !important;
-        color: #475569 !important;
-    }
-    /* 選択中のタブの背景ハイライト */
-    div[role="radiogroup"] label:has(input[type="radio"]:checked) {
-        background: #4F46E5 !important;
-        box-shadow: 0 2px 6px rgba(79, 70, 229, 0.35) !important;
-    }
-    div[role="radiogroup"] label:has(input[type="radio"]:checked) p {
-        color: #FFFFFF !important;
+        font-size: 0.78rem !important;
         font-weight: 800 !important;
+        color: #475569 !important;
+        line-height: 1.2 !important;
+        white-space: nowrap !important;
+    }
+    /* アクティブタブのスタイル */
+    div[role="radiogroup"] label:has(input:checked),
+    div[role="radiogroup"] label[data-selected="true"] {
+        background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%) !important;
+        box-shadow: 0 3px 8px rgba(79, 70, 229, 0.3) !important;
+    }
+    div[role="radiogroup"] label:has(input:checked) [data-testid="stMarkdownContainer"] p,
+    div[role="radiogroup"] label[data-selected="true"] [data-testid="stMarkdownContainer"] p {
+        color: #FFFFFF !important;
     }
 
-    /* スマホで見やすいカードUI */
-    .mobile-card {
-        background-color: #FFFFFF;
-        border-radius: 16px;
-        padding: 1.1rem 1.2rem;
+    /* 6. コンテンツカード & セクションヘッダー */
+    .surface-card {
+        background: #FFFFFF;
+        border-radius: 18px;
+        padding: 1.1rem 1.15rem;
         border: 1px solid #E2E8F0;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-        margin-bottom: 1rem;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04);
+        margin-bottom: 0.9rem;
     }
-    
-    /* 座席お知らせビッグバナー */
-    .seat-banner {
-        background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%);
-        color: #FFFFFF;
+    .section-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 0.45rem;
+    }
+    .section-title {
+        font-size: 1.08rem !important;
+        font-weight: 800 !important;
+        color: #0F172A !important;
+        margin: 0 !important;
+        line-height: 1.35 !important;
+    }
+    .section-desc {
+        font-size: 0.83rem !important;
+        color: #64748B !important;
+        margin-top: 0.25rem !important;
+        margin-bottom: 0.85rem !important;
+        line-height: 1.45 !important;
+    }
+
+    /* カスタムプログレスバー */
+    .custom-progress-bg {
+        width: 100%;
+        height: 10px;
+        background-color: #E2E8F0;
+        border-radius: 999px;
+        overflow: hidden;
+        margin: 0.45rem 0;
+    }
+    .custom-progress-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #4F46E5 0%, #3B82F6 100%);
+        border-radius: 999px;
+        transition: width 0.3s ease;
+    }
+
+    /* 7. 座席チケットバナー */
+    .seat-ticket {
         border-radius: 20px;
-        padding: 1.5rem 1.2rem;
+        padding: 1.35rem 1.1rem;
         text-align: center;
-        margin: 0.8rem 0 1.2rem 0;
-        box-shadow: 0 10px 20px -3px rgba(79, 70, 229, 0.35);
+        margin: 0.75rem 0 1rem 0;
+        position: relative;
+        box-shadow: 0 10px 20px -5px rgba(15, 23, 42, 0.12);
     }
-    .seat-banner-title {
-        font-size: 0.95rem;
-        opacity: 0.92;
-        font-weight: 600;
+    .seat-ticket-label {
+        font-size: 0.85rem;
+        font-weight: 700;
+        margin-bottom: 0.25rem;
     }
-    .seat-banner-main {
-        font-size: 2.3rem;
+    .seat-ticket-main {
+        font-size: 2.2rem;
         font-weight: 900;
-        margin: 0.4rem 0;
-        letter-spacing: 1px;
-        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+        letter-spacing: 0.5px;
+        margin: 0.2rem 0 0.4rem 0;
+        line-height: 1.15;
     }
-    .seat-banner-note {
-        font-size: 0.88rem;
-        opacity: 0.9;
-    }
-
-    /* 表彰台カード（結果発表用） */
-    .podium-card {
-        background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
-        border: 2px solid #FCD34D;
-        border-radius: 20px;
-        padding: 1.4rem;
-        text-align: center;
-        margin-bottom: 1.2rem;
-        box-shadow: 0 6px 12px -2px rgba(245, 158, 11, 0.2);
+    .seat-ticket-sub {
+        display: inline-block;
+        font-size: 0.82rem;
+        font-weight: 700;
+        padding: 0.25rem 0.75rem;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.75);
     }
 
-    /* ランキングカード */
+    /* 8. ランキングカード */
     .rank-card {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0.85rem 1.1rem;
+        padding: 0.8rem 1rem;
         border-radius: 14px;
         border: 1px solid #E2E8F0;
         background-color: #FFFFFF;
-        margin-bottom: 0.55rem;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+        margin-bottom: 0.5rem;
+        box-shadow: 0 2px 5px rgba(15, 23, 42, 0.03);
     }
     .rank-top1 {
-        background: linear-gradient(90deg, #FEF08A 0%, #FFFBEB 100%);
-        border-color: #FACC15;
-        box-shadow: 0 4px 8px rgba(250, 204, 21, 0.2);
+        background: linear-gradient(135deg, #FEF9C3 0%, #FFFBEB 100%);
+        border: 1.5px solid #FACC15;
+        box-shadow: 0 4px 10px rgba(250, 204, 21, 0.18);
     }
     .rank-top2 {
-        background: linear-gradient(90deg, #E2E8F0 0%, #F8FAFC 100%);
-        border-color: #94A3B8;
+        background: linear-gradient(135deg, #F1F5F9 0%, #FFFFFF 100%);
+        border: 1.5px solid #94A3B8;
     }
     .rank-top3 {
-        background: linear-gradient(90deg, #FED7AA 0%, #FFF7ED 100%);
-        border-color: #FB923C;
+        background: linear-gradient(135deg, #FFEDD5 0%, #FFF7ED 100%);
+        border: 1.5px solid #FB923C;
     }
-    
-    .rank-badge { font-size: 1.25rem; font-weight: 800; width: 2.2rem; text-align: center; }
-    .rank-name-box { flex-grow: 1; margin-left: 0.6rem; }
-    .rank-name { font-size: 1.05rem; font-weight: 700; color: #0F172A; }
-    .rank-meta { font-size: 0.78rem; color: #64748B; margin-top: 2px; }
-    .rank-score-box { text-align: right; }
-    .rank-points-text { font-size: 1.2rem; font-weight: 800; color: #4F46E5; }
-    .rank-score-text { font-size: 0.78rem; color: #64748B; }
+    .rank-badge {
+        font-size: 1.1rem;
+        font-weight: 900;
+        min-width: 2.4rem;
+        text-align: center;
+        color: #0F172A !important;
+    }
+    .rank-name-box { flex-grow: 1; margin-left: 0.55rem; min-width: 0; }
+    .rank-name {
+        font-size: 0.98rem;
+        font-weight: 800;
+        color: #0F172A !important;
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    .rank-meta {
+        font-size: 0.75rem;
+        color: #64748B !important;
+        margin-top: 2px;
+    }
+    .rank-score-box { text-align: right; margin-left: 0.5rem; white-space: nowrap; }
+    .rank-points-text { font-size: 1.15rem; font-weight: 900; color: #4F46E5 !important; }
+    .rank-score-text { font-size: 0.75rem; color: #64748B !important; font-weight: 600; }
 
     /* タグバッジ */
     .role-badge-admin {
         background-color: #FEF3C7;
-        color: #B45309;
-        font-size: 0.72rem;
+        color: #B45309 !important;
+        font-size: 0.68rem;
         padding: 2px 7px;
         border-radius: 6px;
         font-weight: 800;
-        margin-left: 5px;
         border: 1px solid #FDE68A;
+        vertical-align: middle;
     }
     .role-badge-gen {
         background-color: #F1F5F9;
-        color: #475569;
-        font-size: 0.72rem;
+        color: #475569 !important;
+        font-size: 0.68rem;
         padding: 2px 7px;
         border-radius: 6px;
-        font-weight: 600;
-        margin-left: 5px;
+        font-weight: 700;
         border: 1px solid #E2E8F0;
+        vertical-align: middle;
     }
 
-    /* フォームコントロールのスタイル */
-    .stTextInput > div > div > input {
-        border-radius: 12px !important;
-        border: 1.5px solid #CBD5E1 !important;
-        padding: 0.65rem 0.85rem !important;
-        font-size: 1rem !important;
+    /* 9. フォーム・入力欄・セレクトボックス・ボタン（ダークモード時の黒背景化・白文字化を完全防止） */
+    [data-testid="stForm"] {
         background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 18px !important;
+        padding: 1.15rem !important;
+        box-shadow: 0 4px 12px rgba(15, 23, 42, 0.04) !important;
     }
-    .stTextInput > div > div > input:focus {
-        border-color: #4F46E5 !important;
-        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18) !important;
-    }
+    .stTextInput > div > div,
+    .stNumberInput > div > div,
     .stSelectbox > div > div {
+        background-color: #F8FAFC !important;
+        color: #0F172A !important;
         border-radius: 12px !important;
         border: 1.5px solid #CBD5E1 !important;
-        background-color: #FFFFFF !important;
     }
-    .stNumberInput > div > div > input {
-        border-radius: 12px !important;
-        border: 1.5px solid #CBD5E1 !important;
-        font-size: 1.3rem !important;
+    .stTextInput input,
+    .stNumberInput input,
+    .stSelectbox div[data-baseweb="select"] * {
+        color: #0F172A !important;
+        -webkit-text-fill-color: #0F172A !important;
+        background-color: transparent !important;
+        font-weight: 600 !important;
+    }
+    .stTextInput input::placeholder {
+        color: #94A3B8 !important;
+        -webkit-text-fill-color: #94A3B8 !important;
+        opacity: 1 !important;
+    }
+    .stNumberInput input {
+        font-size: 1.35rem !important;
         font-weight: 800 !important;
         text-align: center !important;
-        background-color: #FFFFFF !important;
+    }
+    /* 数値入力の＋/ーボタン */
+    .stNumberInput button {
+        background-color: #E2E8F0 !important;
+        color: #0F172A !important;
     }
 
-    /* ボタンのスタイル */
-    .stButton > button {
+    /* 通常ボタン & フォーム送信ボタン共通スタイル */
+    .stButton > button,
+    .stFormSubmitButton > button,
+    .stDownloadButton > button {
         border-radius: 12px !important;
-        padding: 0.75rem 1.2rem !important;
+        min-height: 3rem !important;
+        padding: 0.65rem 1.1rem !important;
         font-weight: 800 !important;
-        font-size: 1rem !important;
+        font-size: 0.98rem !important;
         transition: all 0.15s ease !important;
+        border: 1px solid #CBD5E1 !important;
+        background-color: #FFFFFF !important;
+        color: #0F172A !important;
     }
-    .stButton > button[kind="primary"] {
+    .stButton > button p,
+    .stFormSubmitButton > button p,
+    .stDownloadButton > button p {
+        color: #0F172A !important;
+        font-weight: 800 !important;
+        font-size: 0.98rem !important;
+    }
+    /* Primaryボタン（送信・メインアクション） */
+    .stButton > button[kind="primary"],
+    .stFormSubmitButton > button[kind="primary"],
+    .stDownloadButton > button[kind="primary"],
+    button[data-testid="stBaseButton-primary"],
+    button[data-testid="stBaseButton-primaryFormSubmit"] {
         background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%) !important;
+        color: #FFFFFF !important;
         border: none !important;
-        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35) !important;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3) !important;
     }
-    .stButton > button:hover {
-        transform: translateY(-1px) !important;
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12) !important;
+    .stButton > button[kind="primary"] p,
+    .stFormSubmitButton > button[kind="primary"] p,
+    .stDownloadButton > button[kind="primary"] p,
+    button[data-testid="stBaseButton-primary"] p,
+    button[data-testid="stBaseButton-primaryFormSubmit"] p {
+        color: #FFFFFF !important;
+    }
+
+    /* Expander と Tabs のスタイル調整 */
+    [data-testid="stExpander"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E2E8F0 !important;
+        border-radius: 14px !important;
+        overflow: hidden !important;
+    }
+    [data-testid="stExpander"] summary {
+        background-color: #F8FAFC !important;
+        color: #0F172A !important;
+        font-weight: 700 !important;
+    }
+    [data-testid="stExpander"] summary p {
+        color: #0F172A !important;
+        font-weight: 700 !important;
+    }
+    button[data-baseweb="tab"] {
+        font-weight: 700 !important;
+        color: #475569 !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        color: #4F46E5 !important;
     }
     </style>
     """,
@@ -388,38 +597,63 @@ st.markdown(
 # ==============================================================================
 # ヘッダー & ナビゲーション
 # ==============================================================================
+def get_phase_step_index(current_phase: str) -> int:
+    """5段階ステップ（0:エントリー, 1:予選1, 2:予選2, 3:決勝, 4:結果発表）のインデックスを返します。"""
+    if current_phase == PHASE_ENTRY:
+        return 0
+    elif "予選１" in current_phase:
+        return 1
+    elif "予選２" in current_phase:
+        return 2
+    elif "決勝" in current_phase:
+        return 3
+    else:
+        return 4
+
+
 def render_header_and_nav():
     current_phase = db.get_setting("current_phase", PHASE_ENTRY)
 
-    # フェーズごとのバッジ装飾クラス
     if "準備" in current_phase:
-        badge_class = "phase-badge-seat"
+        pill_class = "pill-seat"
         phase_icon = "🪑"
     elif "結果入力" in current_phase:
-        badge_class = "phase-badge-score"
+        pill_class = "pill-score"
         phase_icon = "🎲"
     elif "結果発表" in current_phase:
-        badge_class = "phase-badge-result"
+        pill_class = "pill-result"
         phase_icon = "🏆"
     else:
-        badge_class = "phase-badge-entry"
+        pill_class = "pill-entry"
         phase_icon = "📝"
 
+    active_step = get_phase_step_index(current_phase)
+    step_names = ["エントリー", "予選1", "予選2", "決勝", "結果発表"]
+    steps_html = ""
+    for idx, s_name in enumerate(step_names):
+        if idx < active_step:
+            st_cls = "step-item step-done"
+        elif idx == active_step:
+            st_cls = "step-item step-active"
+        else:
+            st_cls = "step-item"
+        steps_html += f'<div class="{st_cls}"><div class="step-bar"></div><div class="step-label">{s_name}</div></div>'
+
     st.markdown(
-        f"""
-        <div class="app-header">
-            <div class="app-title">🐼 パンダロイヤル</div>
-            <div class="app-subtitle">ダイスゲーム大会マネージャー</div>
-            <div class="phase-badge-container {badge_class}">
-                <span>{phase_icon}</span>
-                <span>進行状況: {current_phase}</span>
-            </div>
-        </div>
-        """,
+        f'<div class="hero-card">'
+        f'<div class="hero-brand">'
+        f'<span style="font-size: 1.5rem;">🐼</span>'
+        f'<div class="hero-title">パンダロイヤル</div>'
+        f'</div>'
+        f'<div class="hero-sub">DICE GAME TOURNAMENT MANAGER</div>'
+        f'<div class="phase-pill {pill_class}">'
+        f'<span>{phase_icon}</span><span>{current_phase}</span>'
+        f'</div>'
+        f'<div class="stepper-row">{steps_html}</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
-    # 画面上部メニュー（スマホで1行にすっきり収まる短いラベル）
     menu_options = [
         "🏠 ホーム",
         "📊 順位",
@@ -432,26 +666,80 @@ def render_header_and_nav():
         st.session_state["current_page"] = menu_options[0]
 
     selected_menu = st.radio(
-        "画面メニュー",
+        "ナビゲーション",
         menu_options,
         index=menu_options.index(st.session_state["current_page"]),
         horizontal=True,
         label_visibility="collapsed",
+        key="main_nav_radio",
     )
     st.session_state["current_page"] = selected_menu
 
-    # サイドバー情報
-    with st.sidebar:
-        st.markdown("### 🐼 大会ステータス")
-        st.write(f"現在のフェーズ:\n**{current_phase}**")
-        players = db.get_all_players()
-        p_count = len(players)
-        adm_count = sum(1 for p in players if p["role"] == "admin")
-        gn_count = sum(1 for p in players if p["role"] == "general")
-        st.progress(min(p_count / 30.0, 1.0))
-        st.caption(f"参加登録: {p_count}/30名 (運営: {adm_count}名 / 一般: {gn_count}名)")
-
     return selected_menu, current_phase
+
+
+# ==============================================================================
+# 共通UIパーツ: 卓別座席リスト描画
+# ==============================================================================
+def render_table_seats_cards(seats: list, highlight_player_id: int = -1):
+    """卓ごとの座席表をカラーテーマ付きカード＆タブで描画します。"""
+    if not seats:
+        st.info("まだ座席割り当てデータがありません。")
+        return
+
+    tables: dict = {}
+    for s in seats:
+        tables.setdefault(s["table_name"], []).append(s)
+
+    table_names = list(tables.keys())
+    tab_labels = [get_table_theme(t)["badge"] for t in table_names] + ["📋 全卓一覧"]
+    tabs = st.tabs(tab_labels)
+
+    def _build_table_html(t_name: str, t_players: list) -> str:
+        theme = get_table_theme(t_name)
+        t_players_sorted = sorted(t_players, key=lambda x: x["seat_number"])
+        rows_html = ""
+        for p in t_players_sorted:
+            is_me = p["player_id"] == highlight_player_id
+            role_badge = (
+                '<span class="role-badge-admin">運営</span>'
+                if p["role"] == "admin"
+                else '<span class="role-badge-gen">一般</span>'
+            )
+            me_badge = (
+                '<span style="background:#4F46E5;color:#FFF;font-size:0.68rem;padding:2px 6px;border-radius:99px;margin-left:6px;font-weight:800;">あなた</span>'
+                if is_me
+                else ""
+            )
+            row_bg = "#EEF2FF" if is_me else "#FFFFFF"
+            row_border = f"2px solid {theme['accent']}" if is_me else "1px solid #F1F5F9"
+            rows_html += (
+                f'<div style="background:{row_bg}; border:{row_border}; border-radius:10px; padding:0.55rem 0.85rem; margin-bottom:0.35rem; display:flex; justify-content:space-between; align-items:center;">'
+                f'<div style="display:flex; align-items:center; gap:10px;">'
+                f'<span style="background:{theme["bg"]}; color:{theme["accent"]}; border:1px solid {theme["border"]}; font-weight:900; font-size:0.85rem; width:2rem; height:2rem; border-radius:8px; display:inline-flex; align-items:center; justify-content:center;">{p["seat_number"]}</span>'
+                f'<span style="font-size:0.96rem; font-weight:700; color:#0F172A;">{p["player_name"]}</span>'
+                f'{me_badge}'
+                f'</div>'
+                f'<div>{role_badge}</div>'
+                f'</div>'
+            )
+        return (
+            f'<div style="background:{theme["bg"]}; border:1.5px solid {theme["border"]}; border-radius:16px; padding:0.9rem; margin-bottom:0.85rem;">'
+            f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; padding:0 0.2rem;">'
+            f'<span style="font-size:1.05rem; font-weight:900; color:{theme["accent"]};">{theme["badge"]}</span>'
+            f'<span style="font-size:0.78rem; font-weight:700; color:#475569; background:#FFFFFF; padding:2px 10px; border-radius:99px; border:1px solid {theme["border"]};">{len(t_players_sorted)} 名</span>'
+            f'</div>'
+            f'{rows_html}'
+            f'</div>'
+        )
+
+    for idx, t_name in enumerate(table_names):
+        with tabs[idx]:
+            st.markdown(_build_table_html(t_name, tables[t_name]), unsafe_allow_html=True)
+
+    with tabs[-1]:
+        for t_name in table_names:
+            st.markdown(_build_table_html(t_name, tables[t_name]), unsafe_allow_html=True)
 
 
 # ==============================================================================
@@ -460,21 +748,23 @@ def render_header_and_nav():
 def render_phase_entry():
     players = db.get_all_players()
     current_count = len(players)
+    pct = min(int((current_count / 30.0) * 100), 100)
 
     st.markdown(
-        f"""
-        <div class="mobile-card" style="text-align: center; background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); border-color: #BFDBFE;">
-            <div style="font-size: 1.15rem; font-weight: 800; color: #1E40AF;">📝 参加者エントリー受付中</div>
-            <div style="font-size: 0.82rem; color: #3B82F6; margin: 0.2rem 0 0.6rem 0;">つなげーとIDとお名前を入力してエントリーしてください</div>
-            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.2rem;">
-                <span style="font-size: 0.85rem; font-weight: 700; color: #1E3A8A;">現在の参加枠</span>
-                <span style="font-size: 1.15rem; font-weight: 900; color: #1D4ED8;">{current_count} <span style="font-size: 0.85rem; font-weight: 600; color: #64748B;">/ 30 名</span></span>
-            </div>
-        </div>
-        """,
+        f'<div class="surface-card">'
+        f'<div class="section-header">'
+        f'<div class="section-title">📝 参加者エントリー受付</div>'
+        f'<span style="font-size: 1.05rem; font-weight: 900; color: #4F46E5;">'
+        f'{current_count} <span style="font-size: 0.8rem; color: #64748B; font-weight: 600;">/ 30名</span>'
+        f'</span>'
+        f'</div>'
+        f'<div class="custom-progress-bg"><div class="custom-progress-fill" style="width: {pct}%;"></div></div>'
+        f'<div style="font-size: 0.8rem; color: #64748B; margin-top: 0.3rem;">'
+        f'つなげーとIDと大会で表示するニックネームを入力して登録してください。'
+        f'</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
-    st.progress(min(current_count / 30.0, 1.0))
 
     if current_count >= 30:
         st.warning("⚠️ 定員（30名）に達しています。")
@@ -482,7 +772,7 @@ def render_phase_entry():
     with st.form("phase_entry_form", clear_on_submit=True):
         tsunagate_id = st.text_input("つなげーとID (必須)", placeholder="例: panda_1234")
         player_name = st.text_input("ニックネーム / 表示名 (必須)", placeholder="例: たろう")
-        st.caption("※エントリー時は「一般参加者」として登録されます。運営スタッフのタグ付けは管理者ページで行います。")
+        st.caption("※登録時は「一般参加」となります（運営スタッフの区分変更は管理画面で行います）")
 
         submitted = st.form_submit_button("✅ 大会にエントリーする", use_container_width=True, type="primary")
 
@@ -502,31 +792,52 @@ def render_phase_entry():
             else:
                 st.error(f"❌ {msg}")
 
-    with st.expander(f"📋 現在のエントリー者一覧 ({current_count}名)", expanded=True):
-        if players:
-            for idx, p in enumerate(players, 1):
-                role_label = '<span class="role-badge-admin">運営</span>' if p["role"] == "admin" else '<span class="role-badge-gen">一般</span>'
-                st.markdown(
-                    f"""
-                    <div style="padding: 0.4rem 0; border-bottom: 1px solid #F1F5F9; display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <strong>{idx}. {p['name']}</strong> {role_label}
-                            <div style="font-size: 0.75rem; color: #94A3B8;">ID: {p['tsunagate_id']}</div>
-                        </div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
-        else:
-            st.info("まだエントリーしているプレイヤーはいません。")
+    # エントリー済みメンバー一覧カード
+    if players:
+        items_html = '<div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px;">'
+        for idx, p in enumerate(players, 1):
+            role_label = (
+                '<span class="role-badge-admin">運営</span>'
+                if p["role"] == "admin"
+                else '<span class="role-badge-gen">一般</span>'
+            )
+            items_html += (
+                f'<div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px; padding:0.5rem 0.65rem; display:flex; align-items:center; justify-content:space-between;">'
+                f'<div style="min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">'
+                f'<span style="font-size:0.75rem; font-weight:800; color:#64748B; margin-right:3px;">{idx}.</span>'
+                f'<span style="font-size:0.88rem; font-weight:700; color:#0F172A;">{p["name"]}</span>'
+                f'</div>'
+                f'{role_label}'
+                f'</div>'
+            )
+        items_html += "</div>"
+    else:
+        items_html = '<div style="text-align:center; padding:0.8rem 0; color:#64748B; font-size:0.86rem;">まだエントリーしている参加者はいません。一番乗りで登録しましょう！</div>'
+
+    st.markdown(
+        f'<div class="surface-card" style="margin-top: 0.85rem;">'
+        f'<div class="section-header" style="margin-bottom: 0.65rem;">'
+        f'<div class="section-title" style="font-size: 0.98rem;">👥 エントリー済み参加者 ({current_count}名)</div>'
+        f'</div>'
+        f'{items_html}'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 # ==============================================================================
 # 2. 準備フェーズ画面（席替え表示・座席案内）
 # ==============================================================================
 def render_phase_seating(round_name: str, phase_title: str):
-    st.markdown(f"### 🪑 {phase_title}")
-    st.caption("座席の抽選が完了しました！自分のお名前を選択して座席を確認し、移動してください。")
+    st.markdown(
+        f'<div class="surface-card">'
+        f'<div class="section-title">🪑 {phase_title}</div>'
+        f'<div class="section-desc" style="margin-bottom:0;">'
+        f'座席抽選が完了しました！ご自身のお名前を選択して座席番号を確認し、テーブルへ移動してください。'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     players = db.get_all_players()
     if not players:
@@ -534,84 +845,46 @@ def render_phase_seating(round_name: str, phase_title: str):
         return
 
     player_options = {p["name"]: p for p in players}
-    player_display_list = ["-- お名前を選択して座席を確認 --"] + list(player_options.keys())
-    selected_name = st.selectbox("あなたのお名前", player_display_list)
+    player_display_list = ["-- あなたのお名前を選択してください --"] + list(player_options.keys())
+    selected_name = st.selectbox("👤 あなたのお名前", player_display_list, key=f"seat_sel_{round_name}")
 
-    if selected_name == "-- お名前を選択して座席を確認 --":
-        st.info("👆 上のプルダウンからご自身のお名前を選択してください。")
-    else:
+    selected_player_id = -1
+    if selected_name != "-- あなたのお名前を選択してください --":
         selected_player = player_options[selected_name]
-        player_id = selected_player["id"]
+        selected_player_id = selected_player["id"]
 
-        seat_info = db.get_player_seat(round_name, player_id)
+        seat_info = db.get_player_seat(round_name, selected_player_id)
         if not seat_info:
-            st.error(
-                f"⚠️ {round_name} の座席割り当てデータが見つかりません。\n\n"
-                f"運営スタッフが座席抽選を行うまで少々お待ちください。"
-            )
+            st.error(f"⚠️ {round_name} の座席データがまだ作成されていません。運営の抽選完了をお待ちください。")
         else:
             table_name = seat_info["table_name"]
             seat_number = seat_info["seat_number"]
+            theme = get_table_theme(table_name)
 
-            # 特大座席バナー
             st.markdown(
-                f"""
-                <div class="seat-banner">
-                    <div class="seat-banner-title">📍 {selected_name} さんの割り当て座席</div>
-                    <div class="seat-banner-main">{table_name} &nbsp; {seat_number} 番席</div>
-                    <div class="seat-banner-note">👉 {table_name}の{seat_number}番の席へご移動ください</div>
-                </div>
-                """,
+                f'<div class="seat-ticket" style="background:{theme["bg"]}; border:2.5px solid {theme["accent"]};">'
+                f'<div class="seat-ticket-label" style="color:{theme["accent"]};">📍 {selected_name} さんの {round_name} 座席チケット</div>'
+                f'<div class="seat-ticket-main" style="color:#0F172A;">{theme["badge"]} &nbsp; <span style="color:{theme["accent"]};">{seat_number}番席</span></div>'
+                f'<div class="seat-ticket-sub" style="color:{theme["accent"]}; border:1px solid {theme["border"]};">👉 {table_name} の {seat_number}番席 へご着席ください</div>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
 
-    st.info("💡 全員の着席と運営の合図をお待ちください。対戦終了後に「結果入力」画面へ切り替わります。")
-
-    # 全座席表の表示
-    st.markdown("---")
-    st.markdown(f"#### 📋 {round_name} 全座席表")
+    st.markdown(f'<div style="font-size:1rem; font-weight:800; color:#0F172A; margin:0.6rem 0 0.4rem 0;">🗺️ {round_name} テーブル別座席表</div>', unsafe_allow_html=True)
     seats = db.get_seats_by_round(round_name)
-    if not seats:
-        st.caption("座席表データはまだありません。")
-    else:
-        tables: dict = {}
-        for s in seats:
-            tables.setdefault(s["table_name"], []).append(s)
+    render_table_seats_cards(seats, highlight_player_id=selected_player_id)
 
-        selected_tbl_tab = st.radio("卓切り替え", list(tables.keys()), horizontal=True, key=f"seat_tab_{round_name}")
-        tbl_players = tables.get(selected_tbl_tab, [])
-        tbl_players.sort(key=lambda x: x["seat_number"])
-
-        for p in tbl_players:
-            role_badge = '<span class="role-badge-admin">運営</span>' if p["role"] == "admin" else '<span class="role-badge-gen">一般</span>'
-            st.markdown(
-                f"""
-                <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 0.6rem 0.9rem; margin-bottom: 0.35rem; display: flex; justify-content: space-between; align-items: center;">
-                    <div>
-                        <strong style="color: #4F46E5; font-size: 1.1rem; min-width: 2rem; display: inline-block;">{p['seat_number']}</strong>
-                        <span style="font-size: 0.95rem; font-weight: 600; margin-left: 0.3rem;">{p['player_name']}</span>
-                    </div>
-                    <div>{role_badge}</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    # 予選2や決勝の準備フェーズでは、直前までの総合ランキングも確認できるアコーディオンを表示
     if round_name in ["予選2", "決勝"]:
-        st.markdown("---")
-        with st.expander("📊 これまでの暫定総合順位を確認する", expanded=False):
+        with st.expander("📊 これまでの暫定総合順位を見る", expanded=False):
             rounds_to_calc = ["予選1"] if round_name == "予選2" else ["予選1", "予選2"]
             all_scs = db.get_all_scores_summary()
             rankings = logic.calculate_overall_ranking(players, all_scs, target_rounds=rounds_to_calc)
             for p in rankings:
                 st.markdown(
-                    f"""
-                    <div style="display:flex; justify-content:space-between; padding:0.4rem 0; border-bottom:1px solid #F1F5F9;">
-                        <div><strong>{p['overall_rank']}位</strong> {p['player_name']}</div>
-                        <div><strong style="color:#4F46E5;">{p['total_rank_points']}pt</strong> (計{p['total_score']}点)</div>
-                    </div>
-                    """,
+                    f'<div style="display:flex; justify-content:space-between; padding:0.45rem 0.2rem; border-bottom:1px solid #F1F5F9; font-size:0.9rem;">'
+                    f'<div><strong>{p["overall_rank"]}位</strong> &nbsp; {p["player_name"]}</div>'
+                    f'<div><strong style="color:#4F46E5;">{p["total_rank_points"]} pt</strong> <span style="color:#64748B;font-size:0.8rem;">(計{p["total_score"]}点)</span></div>'
+                    f'</div>',
                     unsafe_allow_html=True,
                 )
 
@@ -620,8 +893,15 @@ def render_phase_seating(round_name: str, phase_title: str):
 # 3. 結果入力フェーズ画面 (スコア報告)
 # ==============================================================================
 def render_phase_score_input(round_name: str, phase_title: str):
-    st.markdown(f"### 🎲 {phase_title}")
-    st.caption("ゲーム終了！ご自身のお名前を選択し、ダイスゲームで獲得した素点スコアを送信してください。")
+    st.markdown(
+        f'<div class="surface-card">'
+        f'<div class="section-title">🎲 {phase_title}</div>'
+        f'<div class="section-desc" style="margin-bottom:0;">'
+        f'ゲーム終了後、ご自身のお名前を選択して獲得した素点スコアを送信してください。'
+        f'</div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     players = db.get_all_players()
     if not players:
@@ -629,11 +909,10 @@ def render_phase_score_input(round_name: str, phase_title: str):
         return
 
     player_options = {p["name"]: p for p in players}
-    player_display_list = ["-- お名前を選択してスコア入力 --"] + list(player_options.keys())
-    selected_name = st.selectbox("あなたのお名前", player_display_list)
+    player_display_list = ["-- あなたのお名前を選択してください --"] + list(player_options.keys())
+    selected_name = st.selectbox("👤 あなたのお名前", player_display_list, key=f"score_sel_{round_name}")
 
-    if selected_name == "-- お名前を選択してスコア入力 --":
-        st.info("👆 上のプルダウンからご自身のお名前を選択してください。")
+    if selected_name == "-- あなたのお名前を選択してください --":
         return
 
     selected_player = player_options[selected_name]
@@ -641,25 +920,24 @@ def render_phase_score_input(round_name: str, phase_title: str):
 
     seat_info = db.get_player_seat(round_name, player_id)
     if not seat_info:
-        st.error(f"⚠️ {round_name} の座席情報がありません。運営にお問い合わせください。")
+        st.error(f"⚠️ {round_name} の座席情報がありません。運営スタッフにお声がけください。")
         return
 
     table_name = seat_info["table_name"]
     seat_number = seat_info["seat_number"]
+    theme = get_table_theme(table_name)
 
-    # 座席案内バナー
     st.markdown(
-        f"""
-        <div class="seat-banner">
-            <div class="seat-banner-title">📍 あなたの {round_name} 座席</div>
-            <div class="seat-banner-main">{table_name} &nbsp; {seat_number} 番席</div>
-            <div class="seat-banner-note">※卓情報は自動確定済みです</div>
-        </div>
-        """,
+        f'<div style="background:{theme["bg"]}; border:1.5px solid {theme["border"]}; border-radius:14px; padding:0.75rem 1rem; margin:0.4rem 0 0.85rem 0; display:flex; justify-content:space-between; align-items:center;">'
+        f'<div>'
+        f'<div style="font-size:0.75rem; color:#475569; font-weight:700;">あなたの対戦テーブル</div>'
+        f'<div style="font-size:1.15rem; font-weight:900; color:{theme["accent"]};">{theme["badge"]} {seat_number}番席</div>'
+        f'</div>'
+        f'<span style="font-size:0.75rem; background:#FFFFFF; color:#475569; padding:4px 10px; border-radius:99px; border:1px solid {theme["border"]}; font-weight:700;">自動判定済</span>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
-    # 既存スコア取得
     existing_scores = db.get_scores_by_round(round_name)
     current_sc = None
     for s in existing_scores:
@@ -667,22 +945,20 @@ def render_phase_score_input(round_name: str, phase_title: str):
             current_sc = s["score"]
             break
 
-    # スコア送信フォーム
     with st.form("score_input_form"):
         default_val = current_sc if current_sc is not None else 0
         input_score = st.number_input(
-            "ゲーム獲得スコア (素点)",
+            f"🎯 {round_name} の獲得スコア（素点）",
             min_value=0,
             max_value=9999,
             value=int(default_val),
             step=1,
-            help="ダイスゲーム終了時に獲得した素点を入力してください",
         )
 
         if current_sc is not None:
-            st.caption(f"ℹ️ 現在の登録済みスコア: {current_sc} 点 (再送信で更新されます)")
+            st.caption(f"✅ 現在登録されているスコア: {current_sc} 点（再送信で修正できます）")
 
-        submit_btn = st.form_submit_button("📤 スコアを送信する", use_container_width=True, type="primary")
+        submit_btn = st.form_submit_button("📤 スコアを確定して送信する", use_container_width=True, type="primary")
 
         if submit_btn:
             db.save_score(round_name, player_id, int(input_score), table_name)
@@ -691,41 +967,52 @@ def render_phase_score_input(round_name: str, phase_title: str):
             db.update_rank_points_in_db(round_name, calc)
 
             st.balloons()
-            st.success(f"✅ {round_name} のスコア ({input_score}点) を正常に記録しました！")
+            st.success(f"✅ {round_name} のスコア ({input_score}点) を記録しました！")
             st.rerun()
 
-    # 同卓メンバーの入力状況
-    st.markdown("---")
-    st.markdown(f"#### 👥 {table_name} の入力状況")
+    # 同卓メンバーの入力状況カード
     table_scores = {s["player_id"]: s for s in existing_scores if s["table_name"] == table_name}
     seats_in_round = db.get_seats_by_round(round_name)
     table_seats = [s for s in seats_in_round if s["table_name"] == table_name]
     table_seats.sort(key=lambda x: x["seat_number"])
 
-    st.caption(f"入力進捗: {len(table_scores)} / {len(table_seats)} 名 完了")
+    done_cnt = len(table_scores)
+    total_cnt = len(table_seats)
+    pct = int((done_cnt / total_cnt) * 100) if total_cnt > 0 else 0
+
+    st.markdown(
+        f'<div class="surface-card" style="margin-top:0.9rem;">'
+        f'<div class="section-header">'
+        f'<div class="section-title" style="font-size:0.98rem;">👥 {table_name} のスコア入力状況</div>'
+        f'<span style="font-size:0.88rem; font-weight:800; color:{theme["accent"]};">{done_cnt} / {total_cnt} 名完了</span>'
+        f'</div>'
+        f'<div class="custom-progress-bg"><div class="custom-progress-fill" style="width:{pct}%;"></div></div>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
     for s_info in table_seats:
         pid = s_info["player_id"]
         p_sc_obj = table_scores.get(pid)
-        is_me = (pid == player_id)
-        highlight = "border-left: 4px solid #4F46E5; background-color: #EEF2FF;" if is_me else "background-color: #FFFFFF;"
+        is_me = pid == player_id
+        border_style = f"2px solid {theme['accent']}" if is_me else "1px solid #E2E8F0"
+        bg_style = "#EEF2FF" if is_me else "#FFFFFF"
 
         if p_sc_obj:
-            st_str = f"<strong style='color:#4F46E5;'>{p_sc_obj['score']}点</strong> ({p_sc_obj['rank_in_table']}位 / {p_sc_obj['rank_points']}pt)"
+            st_str = f"<span style='font-weight:900;color:#4F46E5;font-size:0.98rem;'>{p_sc_obj['score']}点</span> <span style='font-size:0.78rem;color:#475569;background:#F1F5F9;padding:2px 7px;border-radius:6px;font-weight:700;'>卓{p_sc_obj['rank_in_table']}位 / {p_sc_obj['rank_points']}pt</span>"
         else:
-            st_str = "<span style='color:#94A3B8; font-size: 0.85rem;'>未入力</span>"
+            st_str = "<span style='color:#94A3B8; font-size:0.82rem; font-weight:600;'>⏳ 未入力</span>"
 
+        me_tag = '<span style="font-size:0.7rem; background:#4F46E5; color:#FFF; padding:1px 6px; border-radius:99px; margin-left:5px; font-weight:700;">あなた</span>' if is_me else ""
         st.markdown(
-            f"""
-            <div style="padding: 0.55rem 0.8rem; border-radius: 8px; border: 1px solid #E2E8F0; margin-bottom: 0.4rem; display: flex; justify-content: space-between; align-items: center; {highlight}">
-                <div>
-                    <span style="font-size: 0.85rem; color: #64748B;">{s_info['seat_number']}番</span>
-                    <strong style="margin-left: 0.3rem;">{s_info['player_name']}</strong>
-                    {'<span style="font-size: 0.75rem; color: #4F46E5; margin-left: 4px;">(あなた)</span>' if is_me else ''}
-                </div>
-                <div>{st_str}</div>
-            </div>
-            """,
+            f'<div style="padding:0.6rem 0.85rem; border-radius:10px; border:{border_style}; background:{bg_style}; margin-bottom:0.38rem; display:flex; justify-content:space-between; align-items:center;">'
+            f'<div>'
+            f'<span style="font-size:0.8rem; font-weight:800; color:#64748B; margin-right:6px;">{s_info["seat_number"]}番</span>'
+            f'<span style="font-weight:700; color:#0F172A;">{s_info["player_name"]}</span>'
+            f'{me_tag}'
+            f'</div>'
+            f'<div>{st_str}</div>'
+            f'</div>',
             unsafe_allow_html=True,
         )
 
@@ -735,14 +1022,10 @@ def render_phase_score_input(round_name: str, phase_title: str):
 # ==============================================================================
 def render_phase_result():
     st.markdown(
-        """
-        <div class="podium-card">
-            <div style="font-size: 1.8rem;">🎉 大会結果発表・表彰式 🎉</div>
-            <div style="font-size: 0.95rem; color: #92400E; margin-top: 0.4rem; font-weight: 600;">
-                パンダロイヤル ダイスゲーム大会 全ラウンド終了！
-            </div>
-        </div>
-        """,
+        '<div class="surface-card" style="background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%); border: 2px solid #FCD34D; text-align: center;">'
+        '<div style="font-size: 1.45rem; font-weight: 900; color: #78350F;">🏆 最終結果発表・表彰式 🏆</div>'
+        '<div style="font-size: 0.84rem; color: #92400E; margin-top: 0.25rem; font-weight: 700;">パンダロイヤル全ラウンド終了！お疲れ様でした！</div>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
@@ -750,154 +1033,59 @@ def render_phase_result():
     all_scores = db.get_all_scores_summary()
 
     if not players:
-        st.info("データがありません。")
+        st.info("まだ参加者データがありません。")
         return
 
     final_scores = db.get_scores_by_round("決勝")
 
     if final_scores:
-        st.markdown("### 👑 チャンピオン卓 最終結果")
         champ_scores = [s for s in final_scores if s["table_name"] == "チャンピオン卓"]
         champ_scores.sort(key=lambda x: x["score"], reverse=True)
 
         if champ_scores:
             p1 = champ_scores[0]
             st.markdown(
-                f"""
-                <div style="background: linear-gradient(135deg, #FEF08A, #FDE047); border-radius: 14px; padding: 1.2rem; text-align: center; margin-bottom: 0.8rem; box-shadow: 0 4px 6px rgba(0,0,0,0.05); border: 2px solid #FACC15;">
-                    <div style="font-size: 1rem; font-weight: bold; color: #854D0E;">🏆 大会 総合優勝 🏆</div>
-                    <div style="font-size: 2rem; font-weight: 800; color: #713F12; margin: 0.3rem 0;">{p1['player_name']} 選手</div>
-                    <div style="font-size: 1.1rem; font-weight: 700; color: #854D0E;">決勝スコア: {p1['score']} 点</div>
-                </div>
-                """,
+                f'<div style="background: linear-gradient(135deg, #FEF08A 0%, #FDE047 100%); border-radius: 18px; padding: 1.3rem; text-align: center; margin-bottom: 0.75rem; box-shadow: 0 8px 16px -3px rgba(234, 179, 8, 0.25); border: 2px solid #EAB308;">'
+                f'<div style="font-size: 0.9rem; font-weight: 900; color: #854D0E; letter-spacing: 1px;">👑 CHAMPION 総合優勝 👑</div>'
+                f'<div style="font-size: 1.85rem; font-weight: 900; color: #713F12; margin: 0.25rem 0;">{p1["player_name"]} 選手</div>'
+                f'<div style="display:inline-block; background:#FFFFFF; color:#854D0E; padding:3px 14px; border-radius:99px; font-size:0.95rem; font-weight:800;">決勝スコア: {p1["score"]} 点</div>'
+                f'</div>',
                 unsafe_allow_html=True,
             )
 
             if len(champ_scores) > 1:
-                col_sub1, col_sub2 = st.columns(2)
-                with col_sub1:
-                    p2 = champ_scores[1]
-                    st.markdown(
-                        f"""
-                        <div style="background: #F1F5F9; border-radius: 12px; padding: 0.8rem; text-align: center; border: 1px solid #CBD5E1;">
-                            <div style="font-size: 0.85rem; font-weight: bold; color: #475569;">🥈 準優勝</div>
-                            <div style="font-size: 1.2rem; font-weight: 700; color: #1E293B;">{p2['player_name']}</div>
-                            <div style="font-size: 0.9rem; color: #64748B;">決勝: {p2['score']}点</div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
+                p2 = champ_scores[1]
+                p3_html = ""
+                if len(champ_scores) > 2:
+                    p3 = champ_scores[2]
+                    p3_html = (
+                        f'<div style="background:#FFF7ED; border-radius:14px; padding:0.85rem; text-align:center; border:1.5px solid #FDBA74;">'
+                        f'<div style="font-size:0.8rem; font-weight:800; color:#9A3412;">🥉 第3位</div>'
+                        f'<div style="font-size:1.1rem; font-weight:900; color:#0F172A; margin:2px 0;">{p3["player_name"]}</div>'
+                        f'<div style="font-size:0.82rem; font-weight:700; color:#64748B;">{p3["score"]} 点</div>'
+                        f'</div>'
                     )
-                with col_sub2:
-                    if len(champ_scores) > 2:
-                        p3 = champ_scores[2]
-                        st.markdown(
-                            f"""
-                            <div style="background: #FFEDD5; border-radius: 12px; padding: 0.8rem; text-align: center; border: 1px solid #FDBA74;">
-                                <div style="font-size: 0.85rem; font-weight: bold; color: #9A3412;">🥉 第3位</div>
-                                <div style="font-size: 1.2rem; font-weight: 700; color: #1E293B;">{p3['player_name']}</div>
-                                <div style="font-size: 0.9rem; color: #64748B;">決勝: {p3['score']}点</div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
+                st.markdown(
+                    f'<div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:8px; margin-bottom:1rem;">'
+                    f'<div style="background:#F8FAFC; border-radius:14px; padding:0.85rem; text-align:center; border:1.5px solid #CBD5E1;">'
+                    f'<div style="font-size:0.8rem; font-weight:800; color:#475569;">🥈 準優勝</div>'
+                    f'<div style="font-size:1.1rem; font-weight:900; color:#0F172A; margin:2px 0;">{p2["player_name"]}</div>'
+                    f'<div style="font-size:0.82rem; font-weight:700; color:#64748B;">{p2["score"]} 点</div>'
+                    f'</div>'
+                    f'{p3_html}'
+                    f'</div>',
+                    unsafe_allow_html=True,
+                )
 
-        silver_scores = [s for s in final_scores if s["table_name"] == "シルバー卓"]
-        bronze_scores = [s for s in final_scores if s["table_name"] == "ブロンズ卓"]
-        silver_scores.sort(key=lambda x: x["score"], reverse=True)
-        bronze_scores.sort(key=lambda x: x["score"], reverse=True)
-
-        if silver_scores or bronze_scores:
-            st.markdown("#### 🎖️ 各卓の覇者")
-            col_t1, col_t2 = st.columns(2)
-            with col_t1:
-                if silver_scores:
-                    s_win = silver_scores[0]
-                    st.markdown(
-                        f"""
-                        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 0.6rem; text-align: center;">
-                            <div style="font-size: 0.8rem; color: #64748B;">🥈 シルバー卓 1位</div>
-                            <strong>{s_win['player_name']}</strong> ({s_win['score']}点)
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-            with col_t2:
-                if bronze_scores:
-                    b_win = bronze_scores[0]
-                    st.markdown(
-                        f"""
-                        <div style="background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 0.6rem; text-align: center;">
-                            <div style="font-size: 0.8rem; color: #64748B;">🥉 ブロンズ卓 1位</div>
-                            <strong>{b_win['player_name']}</strong> ({b_win['score']}点)
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-
-    # 総合ランキング（予選1・2・決勝の合計）
-    st.markdown("---")
-    st.markdown("### 🏅 全ラウンド総合スコア一覧")
+    st.markdown('<div style="font-size:1rem; font-weight:800; color:#0F172A; margin:0.6rem 0 0.4rem 0;">🏅 全ラウンド総合ランキング</div>', unsafe_allow_html=True)
     rankings_all = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選1", "予選2", "決勝"])
-
-    for p in rankings_all:
-        rank = p["overall_rank"]
-        card_class = "rank-card"
-        badge_icon = f"{rank}"
-        if rank == 1:
-            card_class += " rank-top1"
-            badge_icon = "👑 1"
-        elif rank == 2:
-            card_class += " rank-top2"
-            badge_icon = "🥈 2"
-        elif rank == 3:
-            card_class += " rank-top3"
-            badge_icon = "🥉 3"
-
-        role_tag = '<span class="role-badge-admin">運営</span>' if p["role"] == "admin" else ""
-
-        st.markdown(
-            f"""
-            <div class="{card_class}">
-                <div class="rank-badge">{badge_icon}</div>
-                <div class="rank-name-box">
-                    <div class="rank-name">{p['player_name']} {role_tag}</div>
-                    <div class="rank-meta">予1:{p['round_details'].get('予選1',{}).get('score','-')}点 | 予2:{p['round_details'].get('予選2',{}).get('score','-')}点 | 決:{p['round_details'].get('決勝',{}).get('score','-')}点</div>
-                </div>
-                <div class="rank-score-box">
-                    <div class="rank-points-text">{p['total_rank_points']} pt</div>
-                    <div class="rank-score-text">計 {p['total_score']} 点</div>
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    render_ranking_cards_list(rankings_all, ["予選1", "予選2", "決勝"], show_cutoff=False)
 
 
 # ==============================================================================
 # サブ画面: 総合順位 (閲覧用)
 # ==============================================================================
-def render_ranking_page():
-    st.markdown("### 📊 総合順位ランキング")
-    players = db.get_all_players()
-    if not players:
-        st.info("参加者がまだ登録されていません。")
-        return
-
-    all_scores = db.get_all_scores_summary()
-    target_rounds = st.multiselect(
-        "集計対象ラウンド",
-        ["予選1", "予選2", "決勝"],
-        default=["予選1", "予選2"],
-    )
-
-    if not target_rounds:
-        st.warning("集計対象のラウンドを選択してください。")
-        return
-
-    rankings = logic.calculate_overall_ranking(players, all_scores, target_rounds=target_rounds)
-
-    st.caption("※ 順位ルール: 「順位点合計」優先 ＞ 同点なら「素点合計」優先")
-
+def render_ranking_cards_list(rankings: list, target_rounds: list, show_cutoff: bool = False):
     for p in rankings:
         rank = p["overall_rank"]
         card_class = "rank-card"
@@ -917,122 +1105,113 @@ def render_ranking_page():
         detail_texts = []
         for r_name in target_rounds:
             r_obj = p["round_details"].get(r_name)
+            short_r = "予1" if r_name == "予選1" else ("予2" if r_name == "予選2" else "決")
             if r_obj:
-                detail_texts.append(f"{r_name}: {r_obj['score']}点({r_obj['rank_points']}pt)")
+                detail_texts.append(f"{short_r}: {r_obj['score']}点({r_obj['rank_points']}pt)")
             else:
-                detail_texts.append(f"{r_name}: -")
-        detail_str = " | ".join(detail_texts)
+                detail_texts.append(f"{short_r}: -")
+        detail_str = " / ".join(detail_texts)
 
-        if rank == 11 and "予選2" in target_rounds and "決勝" not in target_rounds:
+        if show_cutoff and rank == 11:
             st.markdown(
-                """
-                <div style="text-align: center; margin: 0.6rem 0; padding: 0.2rem; background-color: #FEF3C7; color: #92400E; border-radius: 6px; font-size: 0.75rem; font-weight: bold;">
-                    ▲ 上位10名: チャンピオン卓進出ライン ▲
-                </div>
-                """,
+                '<div style="text-align: center; margin: 0.65rem 0; padding: 0.35rem; background: linear-gradient(90deg, #FEF3C7, #FDE68A, #FEF3C7); color: #92400E; border-radius: 8px; font-size: 0.78rem; font-weight: 900; border: 1px solid #FCD34D;">'
+                '▲ 上位10名 チャンピオン卓進出ライン ▲'
+                '</div>',
                 unsafe_allow_html=True,
             )
 
         st.markdown(
-            f"""
-            <div class="{card_class}">
-                <div class="rank-badge">{badge_icon}</div>
-                <div class="rank-name-box">
-                    <div class="rank-name">{p['player_name']} {role_tag}</div>
-                    <div class="rank-meta">{detail_str}</div>
-                </div>
-                <div class="rank-score-box">
-                    <div class="rank-points-text">{p['total_rank_points']} pt</div>
-                    <div class="rank-score-text">計 {p['total_score']} 点</div>
-                </div>
-            </div>
-            """,
+            f'<div class="{card_class}">'
+            f'<div class="rank-badge">{badge_icon}</div>'
+            f'<div class="rank-name-box">'
+            f'<div class="rank-name">{p["player_name"]} {role_tag}</div>'
+            f'<div class="rank-meta">{detail_str}</div>'
+            f'</div>'
+            f'<div class="rank-score-box">'
+            f'<div class="rank-points-text">{p["total_rank_points"]} pt</div>'
+            f'<div class="rank-score-text">計 {p["total_score"]} 点</div>'
+            f'</div>'
+            f'</div>',
             unsafe_allow_html=True,
         )
+
+
+def render_ranking_page():
+    st.markdown(
+        '<div class="surface-card">'
+        '<div class="section-title">📊 総合順位ランキング</div>'
+        '<div class="section-desc" style="margin-bottom:0;">'
+        '順位決定ルール: 順位点（1位10pt〜）の合計優先 ＞ 同点の場合は獲得スコア（素点）合計優先'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    players = db.get_all_players()
+    if not players:
+        st.info("まだ参加者が登録されていません。")
+        return
+
+    all_scores = db.get_all_scores_summary()
+    r_tabs = st.tabs(["🔥 予選総合 (予1+予2)", "1️⃣ 予選1のみ", "2️⃣ 予選2のみ", "🏆 全ラウンド総合"])
+
+    with r_tabs[0]:
+        rk = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選1", "予選2"])
+        render_ranking_cards_list(rk, ["予選1", "予選2"], show_cutoff=True)
+    with r_tabs[1]:
+        rk = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選1"])
+        render_ranking_cards_list(rk, ["予選1"], show_cutoff=False)
+    with r_tabs[2]:
+        rk = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選2"])
+        render_ranking_cards_list(rk, ["予選2"], show_cutoff=False)
+    with r_tabs[3]:
+        rk = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選1", "予選2", "決勝"])
+        render_ranking_cards_list(rk, ["予選1", "予選2", "決勝"], show_cutoff=False)
 
 
 # ==============================================================================
 # サブ画面: 座席表一覧 (閲覧用)
 # ==============================================================================
 def render_seats_page():
-    st.markdown("### 🪑 座席表一覧")
-    round_selected = st.radio("表示ラウンド", ["予選1", "予選2", "決勝"], horizontal=True)
-
-    seats = db.get_seats_by_round(round_selected)
-    if not seats:
-        st.info(f"{round_selected} の座席割り当てはまだ完了していません。")
-        return
-
-    tables: dict = {}
-    for s in seats:
-        tables.setdefault(s["table_name"], []).append(s)
-
-    table_names = list(tables.keys())
-    selected_tbl = st.radio("表示卓", table_names, horizontal=True)
-
-    p_list = tables.get(selected_tbl, [])
-    p_list.sort(key=lambda x: x["seat_number"])
-
     st.markdown(
-        f"""
-        <div style="background-color: #F8FAFC; border-radius: 10px; padding: 0.8rem; margin: 0.5rem 0 1rem 0; border: 1px solid #E2E8F0; text-align: center;">
-            <div style="font-size: 1.1rem; font-weight: 700; color: #1E293B;">🎲 {selected_tbl} 座席一覧</div>
-            <div style="font-size: 0.8rem; color: #64748B;">定員: {len(p_list)}名</div>
-        </div>
-        """,
+        '<div class="surface-card">'
+        '<div class="section-title">🪑 ラウンド別 座席表一覧</div>'
+        '<div class="section-desc" style="margin-bottom:0;">'
+        '各ラウンドのテーブル割り当てと着席番号を確認できます。'
+        '</div>'
+        '</div>',
         unsafe_allow_html=True,
     )
 
-    for p in p_list:
-        role_badge = '<span class="role-badge-admin">運営</span>' if p["role"] == "admin" else '<span class="role-badge-gen">一般</span>'
-        st.markdown(
-            f"""
-            <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 0.65rem 0.9rem; margin-bottom: 0.4rem; display: flex; justify-content: space-between; align-items: center;">
-                <div>
-                    <strong style="color: #4F46E5; font-size: 1.1rem; min-width: 2rem; display: inline-block;">{p['seat_number']}</strong>
-                    <span style="font-size: 0.95rem; font-weight: 600; margin-left: 0.3rem;">{p['player_name']}</span>
-                </div>
-                <div>{role_badge}</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    round_tabs = st.tabs(["1️⃣ 予選1", "2️⃣ 予選2", "🏆 決勝"])
+    for idx, r_name in enumerate(["予選1", "予選2", "決勝"]):
+        with round_tabs[idx]:
+            seats = db.get_seats_by_round(r_name)
+            render_table_seats_cards(seats)
 
 
 # ==============================================================================
-# サブ画面: 参加用QRコード (プロジェクター投影・スマホ読み取り用)
+# サブ画面: 参加用QRコード
 # ==============================================================================
 def render_qr_page():
-    st.markdown("### 📱 参加用QRコード")
-    st.caption("スマホのカメラでこのQRコードを読み取って大会にご参加ください！")
-
     access_url = get_current_access_url()
     qr_bytes = generate_qr_code_image(access_url)
+    qr_b64 = base64.b64encode(qr_bytes).decode()
 
-    # プロジェクター投影向け大型カード
     st.markdown(
-        f"""
-        <div style="background-color: #FFFFFF; border-radius: 20px; border: 2px solid #E2E8F0; padding: 1.5rem 1rem; text-align: center; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.05); margin-bottom: 1.2rem;">
-            <div style="font-size: 1.3rem; font-weight: 800; color: #1E293B; margin-bottom: 0.5rem;">
-                🐼 パンダロイヤル 大会アクセス
-            </div>
-            <div style="display: flex; justify-content: center; margin: 1rem 0;">
-                <img src="data:image/png;base64,{pd.Series(qr_bytes).apply(lambda x: __import__('base64').b64encode(x).decode()).iloc[0]}" style="width: 260px; height: 260px; border-radius: 12px; border: 1px solid #E2E8F0;" />
-            </div>
-            <div style="background-color: #F8FAFC; border-radius: 8px; padding: 0.6rem; font-family: monospace; font-size: 0.9rem; color: #3B82F6; word-break: break-all; margin: 0.8rem 0;">
-                {access_url}
-            </div>
-            <div style="font-size: 0.85rem; color: #64748B;">
-                📷 スマートフォンの標準カメラアプリで読み取れます
-            </div>
-        </div>
-        """,
+        f'<div class="surface-card" style="text-align: center; padding: 1.5rem 1rem;">'
+        f'<div style="font-size: 1.15rem; font-weight: 900; color: #0F172A; margin-bottom: 0.25rem;">📱 スマホで簡単エントリー＆スコア入力</div>'
+        f'<div style="font-size: 0.82rem; color: #64748B; margin-bottom: 1rem;">カメラアプリで下のQRコードを読み取ってください</div>'
+        f'<div style="display: flex; justify-content: center; margin: 0.5rem 0 1rem 0;">'
+        f'<img src="data:image/png;base64,{qr_b64}" style="width: 240px; height: 240px; border-radius: 16px; border: 2px solid #E2E8F0; padding: 8px; background: #FFFFFF;" />'
+        f'</div>'
+        f'<div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 0.55rem; font-family: monospace; font-size: 0.88rem; font-weight: 700; color: #2563EB; word-break: break-all; margin-bottom: 0.4rem;">{access_url}</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
-    # ダウンロードボタン
     st.download_button(
-        "📥 QRコード画像をダウンロード (印刷・LINE配布用)",
+        "📥 QRコード画像を保存する (印刷・配布用)",
         data=qr_bytes,
         file_name="panda_royal_qr.png",
         mime="image/png",
@@ -1040,58 +1219,40 @@ def render_qr_page():
         type="primary",
     )
 
-    st.markdown("---")
-    with st.expander("ℹ️ 接続に関するヒント"):
-        st.markdown(
-            """
-            - **同じWi-Fi（またはテザリング）に接続している場合**:
-              パソコンとスマホが同じWi-Fiに繋がっていれば、上記QRコードからそのままアクセスできます。
-            - **参加者が自分のモバイル通信（4G/5G）で繋ぐ場合**:
-              Cloudflare Tunnel などの無料トンネリングツールを利用して発行された公開URL（https://...）を「管理者ページ」で設定すると、どの回線からでもQRコードでアクセスできます。
-            """
-        )
-
 
 # ==============================================================================
 # 画面4: 管理者ページ (8フェーズ設定コントロール搭載)
 # ==============================================================================
 def render_admin_page():
-    st.markdown("### ⚙️ 管理者ページ")
+    st.markdown(
+        '<div class="surface-card">'
+        '<div class="section-title">⚙️ 運営管理コンソール</div>'
+        '<div class="section-desc" style="margin-bottom:0;">'
+        'フェーズ進行の切り替え、運営スタッフのタグ付け、座席抽選を行います。'
+        '</div>'
+        '</div>',
+        unsafe_allow_html=True,
+    )
 
-    # パスワード認証
     if "admin_logged_in" not in st.session_state:
         st.session_state["admin_logged_in"] = False
 
     if not st.session_state["admin_logged_in"]:
         with st.form("admin_auth_form"):
-            pw_input = st.text_input("管理者パスワード", type="password", placeholder="パスワードを入力")
-            if st.form_submit_button("🔓 ログイン", use_container_width=True, type="primary"):
+            pw_input = st.text_input("🔑 管理者パスワード", type="password", placeholder="パスワードを入力")
+            if st.form_submit_button("🔓 管理画面にログイン", use_container_width=True, type="primary"):
                 if pw_input == DEFAULT_ADMIN_PASSWORD:
                     st.session_state["admin_logged_in"] = True
-                    st.success("ログイン成功！")
                     st.rerun()
                 else:
                     st.error("パスワードが正しくありません。")
         return
 
-    # 認証後ヘッダー
-    c_auth, c_out = st.columns([3, 1])
-    c_auth.success("🔓 管理者認証中")
-    if c_out.button("ログアウト", use_container_width=True):
-        st.session_state["admin_logged_in"] = False
-        st.rerun()
-
-    # ==========================================
-    # ★ 最重要: 大会進行フェーズ設定（8ステップ）
-    # ==========================================
-    st.markdown("---")
-    st.markdown("#### 🚩 大会進行フェーズ設定")
-    st.caption("選択したフェーズに合わせて、参加者のトップ画面（大会ホーム）の表示が自動的に連動します。")
-
+    # 進行フェーズ設定カード
     current_phase = db.get_setting("current_phase", PHASE_ENTRY)
     curr_idx = ALL_PHASES.index(current_phase) if current_phase in ALL_PHASES else 0
 
-    # フェーズのワンクリック進める/戻すボタン
+    st.markdown("##### 🚩 大会フェーズ進行コントロール")
     col_prev, col_next = st.columns(2)
     with col_prev:
         if curr_idx > 0:
@@ -1102,12 +1263,12 @@ def render_admin_page():
     with col_next:
         if curr_idx < len(ALL_PHASES) - 1:
             next_phase = ALL_PHASES[curr_idx + 1]
-            if st.button(f"進める ➔: {next_phase}", use_container_width=True, type="primary"):
+            if st.button(f"次へ進める ➔ {next_phase}", use_container_width=True, type="primary"):
                 db.set_setting("current_phase", next_phase)
                 st.rerun()
 
     selected_new_phase = st.selectbox(
-        "フェーズを直接選択して変更",
+        "フェーズを直接指定して切り替え",
         ALL_PHASES,
         index=curr_idx,
         key="admin_phase_selector_box",
@@ -1115,42 +1276,54 @@ def render_admin_page():
 
     if selected_new_phase != current_phase:
         db.set_setting("current_phase", selected_new_phase)
-        st.success(f"フェーズを「{selected_new_phase}」に変更しました！参加者トップ画面が自動更新されます。")
+        st.success(f"フェーズを「{selected_new_phase}」に切り替えました！")
         st.rerun()
-
-    st.markdown("---")
 
     players = db.get_all_players()
     total_count = len(players)
     admin_count = sum(1 for p in players if p["role"] == "admin")
     gen_count = sum(1 for p in players if p["role"] == "general")
 
-    col_m1, col_m2, col_m3 = st.columns(3)
-    col_m1.metric("総数", f"{total_count}名")
-    col_m2.metric("運営", f"{admin_count}名")
-    col_m3.metric("一般", f"{gen_count}名")
+    st.markdown(
+        f"""
+        <div style="display:grid; grid-template-columns:repeat(3, 1fr); gap:8px; margin:0.75rem 0;">
+            <div style="background:#FFFFFF; border:1px solid #E2E8F0; border-radius:12px; padding:0.6rem; text-align:center;">
+                <div style="font-size:0.72rem; color:#64748B; font-weight:700;">総エントリー</div>
+                <div style="font-size:1.25rem; font-weight:900; color:#0F172A;">{total_count}名</div>
+            </div>
+            <div style="background:#FFFBEB; border:1px solid #FDE68A; border-radius:12px; padding:0.6rem; text-align:center;">
+                <div style="font-size:0.72rem; color:#B45309; font-weight:700;">運営スタッフ</div>
+                <div style="font-size:1.25rem; font-weight:900; color:#B45309;">{admin_count}名</div>
+            </div>
+            <div style="background:#F8FAFC; border:1px solid #E2E8F0; border-radius:12px; padding:0.6rem; text-align:center;">
+                <div style="font-size:0.72rem; color:#475569; font-weight:700;">一般参加</div>
+                <div style="font-size:1.25rem; font-weight:900; color:#334155;">{gen_count}名</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     admin_tabs = st.tabs([
         "👥 タグ付け",
         "🎯 座席抽選",
         "📊 入力進捗",
-        "📱 QR・URL設定",
-        "🛠️ テスト/初期化",
+        "📱 URL設定",
+        "🛠️ 管理/DB",
     ])
 
     # タブ1: 属性タグ付け
     with admin_tabs[0]:
-        st.markdown("##### 👥 参加者タグ付け (運営 / 一般)")
         if not players:
             st.info("参加者がまだいません。")
         else:
             for p in players:
-                is_admin = (p["role"] == "admin")
+                is_admin = p["role"] == "admin"
                 col_p_info, col_p_btn = st.columns([3, 2])
                 with col_p_info:
                     tag_html = '<span class="role-badge-admin">運営</span>' if is_admin else '<span class="role-badge-gen">一般</span>'
                     st.markdown(
-                        f"**{p['name']}** {tag_html}<div style='font-size:0.75rem;color:#94A3B8;'>ID: {p['tsunagate_id']}</div>",
+                        f"**{p['name']}** {tag_html}<div style='font-size:0.75rem;color:#64748B;'>ID: {p['tsunagate_id']}</div>",
                         unsafe_allow_html=True,
                     )
                 with col_p_btn:
@@ -1160,13 +1333,12 @@ def render_admin_page():
                         db.update_player_role(p["id"], next_role)
                         st.rerun()
 
-        st.markdown("---")
         with st.expander("➕ 手動エントリー (代理登録)"):
             with st.form("manual_add_form", clear_on_submit=True):
                 m_tid = st.text_input("つなげーとID")
                 m_name = st.text_input("お名前")
                 m_role = st.selectbox("属性", ["一般", "運営"])
-                if st.form_submit_button("登録する", use_container_width=True):
+                if st.form_submit_button("登録する", use_container_width=True, type="primary"):
                     if m_tid.strip() and m_name.strip():
                         ok, msg = db.add_player(m_tid, m_name, "admin" if m_role == "運営" else "general")
                         if ok:
@@ -1189,12 +1361,11 @@ def render_admin_page():
 
     # タブ2: 座席抽選
     with admin_tabs[1]:
-        st.markdown("##### 🎯 座席自動抽選")
         if len(players) < 3:
-            st.warning("参加者が3名未満です。")
+            st.warning("座席抽選には3名以上の参加者が必要です。")
         else:
             with st.expander("🎲 予選1 座席抽選", expanded=True):
-                st.caption("運営を均等に配分し、一般をシャッフル配分します。")
+                st.caption("運営を各卓に均等配分し、一般参加者をシャッフル配分します。")
                 if st.button("🚀 予選1の座席を抽選する", type="primary", use_container_width=True, key="adm_p1_btn"):
                     assignments = logic.assign_preliminary_seats(players, table_names=["A卓", "B卓", "C卓"])
                     db.save_seats("予選1", assignments)
@@ -1209,8 +1380,7 @@ def render_admin_page():
                     st.success("予選2の座席を割り当てました！")
                     st.rerun()
 
-            with st.expander("🏆 決勝ラウンド座席抽選 (足切り付き)", expanded=True):
-                st.caption("予選1・2の総合結果からチャンピオン卓・シルバー卓・ブロンズ卓を決定し、運営足切りを実行します。")
+            with st.expander("🏆 決勝ラウンド座席抽選 (運営足切り付き)", expanded=True):
                 curr_limit = int(db.get_setting("admin_limit_champion", "3"))
                 admin_limit = st.slider(
                     "👑 チャンピオン卓の運営上限人数",
@@ -1231,88 +1401,62 @@ def render_admin_page():
                     db.save_seats("決勝", final_assignments)
                     st.success("決勝ラウンドの座席割り当てが完了しました！")
                     if swap_history:
-                        st.markdown("##### 🔄 運営足切り・繰り上げ履歴")
                         for sw in swap_history:
                             st.write(
-                                f"🔻 運営 {sw['demoted_admin']} (予選{sw['demoted_rank']}位) ➔ 降格\n"
-                                f"🔺 一般 {sw['promoted_general']} (予選{sw['promoted_rank']}位) ➔ チャンピオン卓へ昇格！"
+                                f"🔻 運営 {sw['demoted_admin']} (予選{sw['demoted_rank']}位) ➔ シルバー卓へ\n"
+                                f"🔺 一般 {sw['promoted_general']} (予選{sw['promoted_rank']}位) ➔ チャンピオン卓へ繰上昇格！"
                             )
                     st.rerun()
 
     # タブ3: 入力進捗
     with admin_tabs[2]:
-        st.markdown("##### 📊 ラウンド別スコア入力進捗")
         for r_name in ["予選1", "予選2", "決勝"]:
             r_seats = db.get_seats_by_round(r_name)
             r_scores = db.get_scores_by_round(r_name)
             sc_count = len(r_scores)
             st_count = len(r_seats)
-            pct = (sc_count / st_count) if st_count > 0 else 0
+            pct = int((sc_count / st_count) * 100) if st_count > 0 else 0
 
-            st.markdown(f"**{r_name}**: {sc_count} / {st_count} 名 完了 ({int(pct*100)}%)")
-            st.progress(pct)
-
+            st.markdown(
+                f"""
+                <div class="surface-card" style="padding:0.85rem 1rem; margin-bottom:0.6rem;">
+                    <div style="display:flex; justify-content:space-between; font-weight:800; font-size:0.92rem;">
+                        <span>{r_name}</span>
+                        <span style="color:#4F46E5;">{sc_count} / {st_count} 名完了 ({pct}%)</span>
+                    </div>
+                    <div class="custom-progress-bg">
+                        <div class="custom-progress-fill" style="width:{pct}%;"></div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
             if st_count > 0 and sc_count < st_count:
                 entered_pids = {s["player_id"] for s in r_scores}
                 unentered = [s["player_name"] for s in r_seats if s["player_id"] not in entered_pids]
-                st.caption(f"未入力: {', '.join(unentered)}")
+                st.caption(f"未入力 ({r_name}): {', '.join(unentered)}")
 
-    # タブ4: 参加用QR・URL設定
+    # タブ4: URL設定
     with admin_tabs[3]:
-        st.markdown("##### 📱 参加用アクセスURL & QRコード設定")
-        st.caption("参加者がスマートフォンからアクセスするためのURLを設定・確認できます。")
-
         current_url = get_current_access_url()
         custom_saved_url = db.get_setting("custom_access_url", "")
-
-        st.markdown(f"**現在のアクセスURL:** `{current_url}`")
-        if custom_saved_url:
-            st.success("🌐 外部公開カスタムURLが適用されています。")
-        else:
-            st.info("📶 ローカルWi-Fi用の内部IPアドレスが適用されています。")
-
-        # QRコードのミニプレビュー
-        qr_preview = generate_qr_code_image(current_url)
-        st.image(qr_preview, width=180, caption="現在の参加用QRコード")
-
-        st.markdown("---")
-        st.markdown("###### 🌐 外部公開URL（Cloudflare Tunnel 等）の手動設定")
-        st.caption(
-            "会場Wi-Fiに繋がず参加者自身のスマホ回線（4G/5G）からアクセスさせたい場合は、"
-            "Cloudflare Tunnel 等で発行された公開URL（例: `https://xxxx.trycloudflare.com`）をここに入力して保存してください。"
-        )
+        st.markdown(f"現在のアクセスURL: `{current_url}`")
 
         with st.form("custom_url_form"):
-            input_custom_url = st.text_input("外部公開URL", value=custom_saved_url, placeholder="https://xxxx.trycloudflare.com")
-            col_u1, col_u2 = st.columns(2)
-            with col_u1:
-                save_url_btn = st.form_submit_button("💾 URLを保存する", use_container_width=True, type="primary")
-            with col_u2:
-                reset_url_btn = st.form_submit_button("🔄 ローカルIPに戻す", use_container_width=True)
-
-            if save_url_btn:
+            input_custom_url = st.text_input("公開URL", value=custom_saved_url, placeholder="https://panda-royal.streamlit.app/")
+            if st.form_submit_button("💾 URLを保存する", use_container_width=True, type="primary"):
                 db.set_setting("custom_access_url", input_custom_url.strip())
-                st.success("アクセスURLを更新しました！QRコードが即時再生成されます。")
-                st.rerun()
-
-            if reset_url_btn:
-                db.set_setting("custom_access_url", "")
-                st.success("ローカルIPアドレスのURLに戻しました。")
+                st.success("アクセスURLを更新しました！")
                 st.rerun()
 
     # タブ5: バックアップ/初期化
     with admin_tabs[4]:
         st.markdown("##### 💾 データベースのバックアップ & 復元")
-        st.caption(
-            "Streamlit Community Cloud などのクラウド環境で運用する場合、"
-            "定期的にバックアップをダウンロードしておくことで、万が一の再起動時にも即座にデータを完全復元できます。"
-        )
-
         col_b1, col_b2 = st.columns(2)
         with col_b1:
             db_bytes = db.get_db_bytes()
             st.download_button(
-                label="📥 DBバックアップを保存 (.db)",
+                label="📥 DBバックアップ保存 (.db)",
                 data=db_bytes,
                 file_name="panda_royal_backup.db",
                 mime="application/octet-stream",
@@ -1321,19 +1465,15 @@ def render_admin_page():
         with col_b2:
             uploaded_db = st.file_uploader("📤 バックアップから復元", type=["db"], label_visibility="collapsed")
             if uploaded_db is not None:
-                if st.button("🔄 このバックアップで復元する", type="primary", use_container_width=True):
-                    file_bytes = uploaded_db.read()
-                    if db.restore_db_from_bytes(file_bytes):
+                if st.button("🔄 このバックアップで復元", type="primary", use_container_width=True):
+                    if db.restore_db_from_bytes(uploaded_db.read()):
                         st.success("✅ データベースを復元しました！")
                         st.rerun()
-                    else:
-                        st.error("❌ データベースの復元に失敗しました。")
 
         st.markdown("---")
         st.markdown("##### 🧪 リハーサル用ダミーデータ")
         if st.button("👥 30名のダミープレイヤーを一括作成", use_container_width=True):
-            admin_names = ["運営A", "運営B", "運営C", "運営D", "運営E"]
-            for i, name in enumerate(admin_names, 1):
+            for i, name in enumerate(["運営A", "運営B", "運営C", "運営D", "運営E"], 1):
                 db.add_player(f"admin_{i:02d}", name, "admin")
             for i in range(1, 26):
                 db.add_player(f"user_{i:02d}", f"一般{i:02d}", "general")
@@ -1354,8 +1494,7 @@ def render_admin_page():
             st.rerun()
 
         st.markdown("---")
-        st.markdown("##### ⚠️ 大会データリセット")
-        with st.expander("🚨 全データ削除"):
+        with st.expander("🚨 全データ削除（初期化）"):
             confirm_text = st.text_input("確認のため「RESET」と入力")
             if st.button("💥 全データをリセットする", type="primary", use_container_width=True):
                 if confirm_text == "RESET":
@@ -1365,6 +1504,10 @@ def render_admin_page():
                 else:
                     st.error("確認テキストが一致しません。")
 
+        if st.button("🔒 管理者からログアウト", use_container_width=True):
+            st.session_state["admin_logged_in"] = False
+            st.rerun()
+
 
 # ==============================================================================
 # メインエントリーポイント
@@ -1373,23 +1516,24 @@ def main():
     selected_menu, current_phase = render_header_and_nav()
 
     if selected_menu == "🏠 ホーム":
-        # 8つのフェーズに合致したコンテンツを表示
         if current_phase == PHASE_ENTRY:
             render_phase_entry()
         elif current_phase == PHASE_PRELIM1_SEAT:
-            render_phase_seating("予選1", "予選１　準備（席替え・座席発表）")
+            render_phase_seating("予選1", "予選1 席替え・座席発表")
         elif current_phase == PHASE_PRELIM1_SCORE:
-            render_phase_score_input("予選1", "予選１　結果入力")
+            render_phase_score_input("予選1", "予選1 スコア結果入力")
         elif current_phase == PHASE_PRELIM2_SEAT:
-            render_phase_seating("予選2", "予選２　準備（席替え・座席発表）")
+            render_phase_seating("予選2", "予選2 席替え・座席発表")
         elif current_phase == PHASE_PRELIM2_SCORE:
-            render_phase_score_input("予選2", "予選２　結果入力")
+            render_phase_score_input("予選2", "予選2 スコア結果入力")
         elif current_phase == PHASE_FINAL_SEAT:
-            render_phase_seating("決勝", "決勝戦　準備（進出卓発表・席替え）")
+            render_phase_seating("決勝", "決勝戦 進出卓発表・席替え")
         elif current_phase == PHASE_FINAL_SCORE:
-            render_phase_score_input("決勝", "決勝戦　結果入力")
+            render_phase_score_input("決勝", "決勝戦 スコア結果入力")
         elif current_phase == PHASE_RESULT:
             render_phase_result()
+        else:
+            render_phase_entry()
     elif selected_menu == "📊 順位":
         render_ranking_page()
     elif selected_menu == "🪑 座席":
@@ -1402,4 +1546,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

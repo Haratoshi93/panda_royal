@@ -358,7 +358,7 @@ def reset_all_data() -> None:
     cursor.execute("DELETE FROM players")
     cursor.execute("UPDATE app_settings SET value = '3' WHERE key = 'admin_limit_champion'")
     cursor.execute("UPDATE app_settings SET value = '予選1' WHERE key = 'current_round'")
-    cursor.execute("UPDATE app_settings SET value = 'エントリー' WHERE key = 'current_phase'")
+    cursor.execute("UPDATE app_settings SET value = 'エントリーフェーズ' WHERE key = 'current_phase'")
     conn.commit()
     conn.close()
 
