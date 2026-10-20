@@ -1,6 +1,6 @@
 """
 パンダロイヤル大会マネージャー (app.py)
-ボードゲーム大会（最大30人）の進行・スコア集計・自動座席割り当てWebアプリケーション
+スマートフォン利用を前提にUI/UXを完全再設計したボードゲーム大会進行Webアプリ
 """
 
 import os
@@ -16,80 +16,162 @@ import tournament_logic as logic
 load_dotenv()
 DEFAULT_ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "panda2026")
 
-# ページ基本設定
+# ページ基本設定（スマホ画面に最適化）
 st.set_page_config(
-    page_title="パンダロイヤル大会マネージャー",
+    page_title="パンダロイヤル",
     page_icon="🐼",
-    layout="wide",
-    initial_sidebar_state="expanded",
+    layout="centered",  # スマホの縦長画面に自然にフィット
+    initial_sidebar_state="collapsed",  # スマホ閲覧時に画面を広く使えるよう初期は閉じる
 )
 
 # データベース初期化
 db.init_db()
 
-# カスタムスタイル
+# モバイルファーストCSSスタイル定義
 st.markdown(
     """
     <style>
-    .main-header {
-        font-size: 1.8rem;
-        font-weight: 700;
-        color: #1E293B;
-        margin-bottom: 0.5rem;
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
+    /* 全体フォント・サイズ調整 */
+    html, body, [class*="css"] {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
-    .sub-text {
-        font-size: 0.95rem;
-        color: #64748B;
-        margin-bottom: 1.5rem;
-    }
-    .metric-card {
-        background-color: #F8FAFC;
-        border-radius: 10px;
-        padding: 1rem;
-        border: 1px solid #E2E8F0;
+    
+    /* モバイル向けヘッダー */
+    .app-header {
+        text-align: center;
+        padding: 0.5rem 0 1rem 0;
+        border-bottom: 2px solid #F1F5F9;
         margin-bottom: 1rem;
     }
-    .table-card {
+    .app-title {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: #0F172A;
+        letter-spacing: -0.5px;
+    }
+    .app-subtitle {
+        font-size: 0.85rem;
+        color: #64748B;
+        margin-top: 0.2rem;
+    }
+
+    /* スマホで見やすいカードUI */
+    .mobile-card {
         background-color: #FFFFFF;
-        border-radius: 12px;
-        padding: 1.2rem;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+        border-radius: 14px;
+        padding: 1rem 1.1rem;
         border: 1px solid #E2E8F0;
-        margin-bottom: 1.2rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
+        margin-bottom: 0.9rem;
     }
-    .admin-badge {
+    
+    /* 座席お知らせビッグバナー */
+    .seat-banner {
+        background: linear-gradient(135deg, #4338CA 0%, #3B82F6 100%);
+        color: #FFFFFF;
+        border-radius: 16px;
+        padding: 1.2rem;
+        text-align: center;
+        margin: 1rem 0 1.5rem 0;
+        box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
+    }
+    .seat-banner-title {
+        font-size: 0.85rem;
+        opacity: 0.9;
+        font-weight: 500;
+    }
+    .seat-banner-main {
+        font-size: 2rem;
+        font-weight: 800;
+        margin: 0.3rem 0;
+        letter-spacing: 0.5px;
+    }
+    .seat-banner-note {
+        font-size: 0.8rem;
+        opacity: 0.85;
+    }
+
+    /* ランキングカード */
+    .rank-card {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.75rem 1rem;
+        border-radius: 12px;
+        border: 1px solid #E2E8F0;
+        background-color: #FFFFFF;
+        margin-bottom: 0.6rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .rank-top1 {
+        background: linear-gradient(90deg, #FEF08A 0%, #FFFBEB 100%);
+        border-color: #FDE047;
+    }
+    .rank-top2 {
+        background: linear-gradient(90deg, #F1F5F9 0%, #FFFFFF 100%);
+        border-color: #CBD5E1;
+    }
+    .rank-top3 {
+        background: linear-gradient(90deg, #FFEDD5 0%, #FFF7ED 100%);
+        border-color: #FDBA74;
+    }
+    .rank-badge {
+        font-size: 1.2rem;
+        font-weight: 800;
+        width: 2.2rem;
+        text-align: center;
+    }
+    .rank-name-box {
+        flex-grow: 1;
+        margin-left: 0.5rem;
+    }
+    .rank-name {
+        font-size: 1rem;
+        font-weight: 700;
+        color: #1E293B;
+    }
+    .rank-meta {
+        font-size: 0.75rem;
+        color: #64748B;
+    }
+    .rank-score-box {
+        text-align: right;
+    }
+    .rank-points-text {
+        font-size: 1.1rem;
+        font-weight: 800;
+        color: #4F46E5;
+    }
+    .rank-score-text {
+        font-size: 0.75rem;
+        color: #64748B;
+    }
+
+    /* タグバッジ */
+    .role-badge-admin {
         background-color: #FEF3C7;
-        color: #92400E;
-        font-weight: 600;
-        padding: 2px 8px;
-        border-radius: 6px;
-        font-size: 0.8rem;
-    }
-    .general-badge {
-        background-color: #E0E7FF;
-        color: #3730A3;
-        font-weight: 600;
-        padding: 2px 8px;
-        border-radius: 6px;
-        font-size: 0.8rem;
-    }
-    .champion-badge {
-        background-color: #FEF08A;
-        color: #854D0E;
+        color: #B45309;
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        border-radius: 4px;
         font-weight: bold;
+        margin-left: 4px;
     }
-    .silver-badge {
-        background-color: #E2E8F0;
-        color: #334155;
-        font-weight: bold;
+    .role-badge-gen {
+        background-color: #F1F5F9;
+        color: #475569;
+        font-size: 0.7rem;
+        padding: 2px 6px;
+        border-radius: 4px;
+        margin-left: 4px;
     }
-    .bronze-badge {
-        background-color: #FFEDD5;
-        color: #9A3412;
-        font-weight: bold;
+
+    /* ボタン・入力要素のタップ領域拡大 */
+    .stButton>button {
+        border-radius: 12px;
+        padding: 0.65rem 1rem;
+        font-weight: 700;
+        font-size: 1rem;
     }
     </style>
     """,
@@ -98,74 +180,95 @@ st.markdown(
 
 
 # ==============================================================================
-# サイドバー & ナビゲーション
+# ナビゲーションバー（スマホの最上部でワンタップ切り替え）
 # ==============================================================================
-def render_sidebar() -> str:
-    st.sidebar.markdown("## 🐼 パンダロイヤル")
-    st.sidebar.caption("ダイスゲーム大会進行システム (最大30名)")
-    
-    # 登録状況のミニインジケーター
-    players = db.get_all_players()
-    player_count = len(players)
-    admin_count = sum(1 for p in players if p["role"] == "admin")
-    gen_count = sum(1 for p in players if p["role"] == "general")
-    
-    st.sidebar.progress(min(player_count / 30.0, 1.0))
-    st.sidebar.caption(f"現在の参加登録: {player_count}/30名 (運営: {admin_count}名 / 一般: {gen_count}名)")
-    
-    st.sidebar.markdown("---")
-    
-    menu = st.sidebar.radio(
-        "メニューを選択してください",
-        ["📝 エントリー画面", "🎲 スコア入力画面", "📊 ダッシュボード (閲覧専用)", "⚙️ 管理者ページ"],
-        index=0,
-    )
-    
-    st.sidebar.markdown("---")
-    st.sidebar.caption("💡 参加者はスマホからエントリーとスコア入力を行えます。")
-    
-    return menu
-
-
-# ==============================================================================
-# 画面1: エントリー画面
-# ==============================================================================
-def render_entry_page():
-    st.markdown('<div class="main-header">📝 参加者エントリー</div>', unsafe_allow_html=True)
+def render_mobile_navigation() -> str:
+    # ヘッダー表示
     st.markdown(
-        '<div class="sub-text">大会に参加するプレイヤー情報を登録してください。（※運営スタッフへのタグ付けは管理者ページで行います）</div>',
+        """
+        <div class="app-header">
+            <div class="app-title">🐼 パンダロイヤル 大会マネージャー</div>
+            <div class="app-subtitle">ダイスゲーム大会 進行・スコア集計システム</div>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
+
+    # 画面上部のワンタップ・セレクター
+    menu_options = [
+        "📝 エントリー",
+        "🎲 スコア入力",
+        "📊 順位・座席表",
+        "⚙️ 管理者ページ",
+    ]
+
+    # セッションステートで画面を保持
+    if "current_page" not in st.session_state:
+        st.session_state["current_page"] = menu_options[0]
+
+    selected_menu = st.radio(
+        "画面メニュー",
+        menu_options,
+        index=menu_options.index(st.session_state["current_page"])
+        if st.session_state["current_page"] in menu_options
+        else 0,
+        horizontal=True,
+        label_visibility="collapsed",
+    )
+
+    st.session_state["current_page"] = selected_menu
+
+    # サイドバー（PC閲覧用・補足情報）
+    with st.sidebar:
+        st.markdown("### 🐼 大会ステータス")
+        players = db.get_all_players()
+        p_count = len(players)
+        adm_count = sum(1 for p in players if p["role"] == "admin")
+        gn_count = sum(1 for p in players if p["role"] == "general")
+        st.progress(min(p_count / 30.0, 1.0))
+        st.caption(f"参加登録: {p_count}/30名 (運営: {adm_count}名 / 一般: {gn_count}名)")
+        st.markdown("---")
+        st.caption("※スマートフォンでのご利用を想定し、縦スクロールに最適化しています。")
+
+    return selected_menu
+
+
+# ==============================================================================
+# 画面1: エントリー画面 (スマホ最適化)
+# ==============================================================================
+def render_entry_page():
+    st.markdown("### 📝 参加者エントリー")
+    st.caption("つなげーとIDとお名前を入力してエントリーしてください。")
 
     players = db.get_all_players()
     current_count = len(players)
 
+    # 進行状況バー
+    st.progress(min(current_count / 30.0, 1.0))
+    st.caption(f"現在のエントリー状況: {current_count} / 30 名")
+
     if current_count >= 30:
-        st.warning("⚠️ 定員（30名）に達しています。追加登録は管理者ページで空き枠を確認してください。")
+        st.warning("⚠️ 定員（30名）に達しています。")
 
-    with st.form("entry_form", clear_on_submit=True):
-        st.markdown("### プレイヤー情報入力")
-        
-        col1, col2 = st.columns([1, 1])
-        with col1:
-            tsunagate_id = st.text_input(
-                "つなげーとID (必須)",
-                placeholder="例: panda_1234",
-                help="つなげーと上でのお名前やIDを入力してください",
-            )
-        with col2:
-            player_name = st.text_input(
-                "ニックネーム / 表示名 (必須)",
-                placeholder="例: たろう",
-                help="大会座席表や順位表に表示されるお名前です",
-            )
+    # 入力フォーム（スマホで押しやすい大きなカード）
+    with st.form("mobile_entry_form", clear_on_submit=True):
+        tsunagate_id = st.text_input(
+            "つなげーとID (必須)",
+            placeholder="例: panda_1234",
+            help="つなげーと上でのIDまたは登録名",
+        )
 
-        st.caption("※エントリー時は「一般参加者」として登録されます。運営メンバーの属性変更は管理者ページで行います。")
+        player_name = st.text_input(
+            "ニックネーム / 表示名 (必須)",
+            placeholder="例: たろう",
+            help="大会座席表や順位表に表示されるお名前です",
+        )
 
-        submitted = st.form_submit_button("✅ 大会にエントリーする", use_container_width=True)
+        st.caption("※エントリー時は自動的に「一般参加者」として登録されます。運営メンバーのタグ付けは管理者ページで行います。")
+
+        submitted = st.form_submit_button("✅ 大会にエントリーする", use_container_width=True, type="primary")
 
         if submitted:
-            # 入力チェック
             if not tsunagate_id.strip():
                 st.error("つなげーとIDを入力してください。")
                 return
@@ -173,92 +276,95 @@ def render_entry_page():
                 st.error("ニックネームを入力してください。")
                 return
 
-            # 初期登録は全員一般（管理者ページで運営タグ付け可能）
             success, message = db.add_player(tsunagate_id, player_name, "general")
             if success:
+                st.balloons()
                 st.success(f"🎉 {player_name} さんのエントリーが完了しました！")
                 st.rerun()
             else:
                 st.error(f"❌ {message}")
 
-    # 登録済みリスト（確認用）
-    st.markdown("---")
-    st.markdown(f"### 現在のエントリー一覧 ({current_count}名)")
-    if players:
-        df_players = pd.DataFrame(players)
-        df_players["属性"] = df_players["role"].apply(lambda r: "運営" if r == "admin" else "一般")
-        df_players = df_players.rename(columns={
-            "id": "番号",
-            "tsunagate_id": "つなげーとID",
-            "name": "名前",
-            "created_at": "登録日時"
-        })
-        st.dataframe(
-            df_players[["番号", "つなげーとID", "名前", "属性"]],
-            use_container_width=True,
-            hide_index=True,
-        )
-    else:
-        st.info("まだエントリーしているプレイヤーはいません。一番乗りで登録しましょう！")
+    # 現在の登録者一覧（アコーディオンでスッキリ）
+    with st.expander(f"📋 現在のエントリー一覧を見る ({current_count}名)", expanded=False):
+        if players:
+            for idx, p in enumerate(players, 1):
+                role_label = '<span class="role-badge-admin">運営</span>' if p["role"] == "admin" else '<span class="role-badge-gen">一般</span>'
+                st.markdown(
+                    f"""
+                    <div style="padding: 0.4rem 0; border-bottom: 1px solid #F1F5F9; display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <strong>{idx}. {p['name']}</strong> {role_label}
+                            <div style="font-size: 0.75rem; color: #94A3B8;">ID: {p['tsunagate_id']}</div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+        else:
+            st.info("まだエントリーしているプレイヤーはいません。")
 
 
 # ==============================================================================
-# 画面2: スコア入力画面
+# 画面2: スコア入力画面 (スマホ最適化)
 # ==============================================================================
 def render_score_page():
-    st.markdown('<div class="main-header">🎲 スコア入力</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="sub-text">ラウンド終了後、自分が獲得したゲームスコアを送信してください。卓情報は自動設定されます。</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown("### 🎲 スコア入力")
+    st.caption("ラウンド終了後、獲得した素点スコアを送信してください。")
 
     players = db.get_all_players()
     if not players:
-        st.warning("参加者がまだ登録されていません。先にエントリー画面から登録してください。")
+        st.warning("参加者がまだ登録されていません。先にエントリーを行ってください。")
         return
 
-    # ラウンド選択
+    # ラウンド選択（スマホで押しやすいラジオボタン）
     round_options = ["予選1", "予選2", "決勝"]
     default_round = db.get_setting("current_round", "予選1")
-    selected_round = st.selectbox(
+    selected_round = st.radio(
         "対象ラウンド",
         round_options,
         index=round_options.index(default_round) if default_round in round_options else 0,
+        horizontal=True,
     )
 
-    # プレイヤー選択（名前リスト）
-    player_map = {f"{p['name']} ({'運営' if p['role'] == 'admin' else '一般'})": p for p in players}
-    player_display_list = ["-- プレイヤーを選択してください --"] + list(player_map.keys())
+    # プレイヤー選択（スマホでタップしやすいプルダウン）
+    player_options = {p["name"]: p for p in players}
+    player_display_list = ["-- お名前を選択してください --"] + list(player_options.keys())
     
-    selected_player_str = st.selectbox("あなたの名前", player_display_list)
+    selected_name = st.selectbox("あなたのお名前", player_display_list)
 
-    if selected_player_str == "-- プレイヤーを選択してください --":
-        st.info("上のプルダウンからお名前を選択してください。")
+    if selected_name == "-- お名前を選択してください --":
+        st.info("👆 上のプルダウンからご自身のお名前を選択してください。")
         return
 
-    selected_player = player_map[selected_player_str]
+    selected_player = player_options[selected_name]
     player_id = selected_player["id"]
 
-    # 該当プレイヤーの指定ラウンドの座席情報を取得
+    # 座席情報の取得
     seat_info = db.get_player_seat(selected_round, player_id)
 
     if not seat_info:
         st.error(
-            f"⚠️ {selected_round} の座席割り当てがまだ完了していません。\n"
-            f"運営が座席抽選を行うまでしばらくお待ちいただくか、運営スタッフにお問い合わせください。"
+            f"⚠️ {selected_round} の座席割り当てがまだ完了していません。\n\n"
+            f"運営スタッフが座席抽選を行うまで少々お待ちください。"
         )
         return
 
     table_name = seat_info["table_name"]
     seat_number = seat_info["seat_number"]
 
-    # 座席情報の表示（自動確定）
-    st.success(
-        f"📍 あなたの割り当て卓: **{table_name}** | 座席番号: **{seat_number}番**\n\n"
-        f"※卓情報はシステムが自動判定しているため、入力不要です。"
+    # スマホ画面にドカンと大きく表示される「座席バナー」
+    st.markdown(
+        f"""
+        <div class="seat-banner">
+            <div class="seat-banner-title">📍 あなたの {selected_round} 割り当て座席</div>
+            <div class="seat-banner-main">{table_name} &nbsp; {seat_number} 番席</div>
+            <div class="seat-banner-note">※卓情報はシステムが保持しているため入力不要です</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    # 既に登録済みのスコアがあるか確認
+    # 既存のスコア確認
     existing_scores = db.get_scores_by_round(selected_round)
     current_registered_score = None
     for s in existing_scores:
@@ -266,12 +372,11 @@ def render_score_page():
             current_registered_score = s["score"]
             break
 
-    with st.form("score_submit_form"):
-        st.markdown(f"### {selected_round} 獲得スコア入力")
-        
+    # スコア送信フォーム
+    with st.form("mobile_score_form"):
         default_val = current_registered_score if current_registered_score is not None else 0
         input_score = st.number_input(
-            "ゲーム終了時の獲得スコア (数値)",
+            "獲得スコア (ゲーム終了時の素点)",
             min_value=0,
             max_value=9999,
             value=int(default_val),
@@ -280,513 +385,452 @@ def render_score_page():
         )
 
         if current_registered_score is not None:
-            st.caption(f"ℹ️ 現在登録済みのスコア: {current_registered_score} 点 (再送信で上書き更新されます)")
+            st.caption(f"ℹ️ 現在の登録済みスコア: {current_registered_score} 点 (再送信で更新されます)")
 
-        submit_btn = st.form_submit_button("📤 スコアを送信する", use_container_width=True)
+        submit_btn = st.form_submit_button(
+            "📤 スコアを送信する",
+            use_container_width=True,
+            type="primary",
+        )
 
         if submit_btn:
-            # スコア保存
             db.save_score(selected_round, player_id, int(input_score), table_name)
-            
-            # 当該ラウンドの全スコアを取得し、卓内順位と順位点を再計算してDB反映
             round_all_scores = db.get_scores_by_round(selected_round)
             calculated_scores = logic.calculate_table_ranks_and_points(round_all_scores)
             db.update_rank_points_in_db(selected_round, calculated_scores)
 
             st.balloons()
-            st.success(f"✅ {selected_round} のスコア ({input_score}点) を正常に記録しました！")
+            st.success(f"✅ {selected_round} のスコア ({input_score}点) を記録しました！")
             st.rerun()
 
-    # 該当卓のスコア入力進捗
+    # 同卓メンバーの入力状況（カードリスト形式でスマホに最適化）
     st.markdown("---")
-    st.markdown(f"### 📋 {table_name} のスコア入力状況")
-    table_scores = [s for s in existing_scores if s["table_name"] == table_name]
+    st.markdown(f"#### 👥 {table_name} の入力状況")
     
-    # 当該卓の割り当て全プレイヤー
+    table_scores = {s["player_id"]: s for s in existing_scores if s["table_name"] == table_name}
     seats_in_round = db.get_seats_by_round(selected_round)
     table_seats = [s for s in seats_in_round if s["table_name"] == table_name]
-    
-    progress_count = len(table_scores)
-    total_table_seats = len(table_seats)
-    st.caption(f"進捗: {progress_count}/{total_table_seats} 名 入力完了")
+    table_seats.sort(key=lambda x: x["seat_number"])
 
-    if table_scores:
-        df_table = pd.DataFrame(table_scores)
-        df_table = df_table.rename(columns={
-            "player_name": "名前",
-            "score": "獲得スコア",
-            "rank_in_table": "卓内暫定順位",
-            "rank_points": "獲得順位点",
-        })
-        st.dataframe(
-            df_table[["名前", "獲得スコア", "卓内暫定順位", "獲得順位点"]],
-            use_container_width=True,
-            hide_index=True,
+    st.caption(f"入力進捗: {len(table_scores)} / {len(table_seats)} 名 完了")
+
+    for s_info in table_seats:
+        pid = s_info["player_id"]
+        p_score_obj = table_scores.get(pid)
+        is_me = (pid == player_id)
+        highlight_style = "border-left: 4px solid #4F46E5; background-color: #EEF2FF;" if is_me else "background-color: #FFFFFF;"
+
+        if p_score_obj:
+            score_status = f"<strong style='color:#4F46E5;'>{p_score_obj['score']}点</strong> ({p_score_obj['rank_in_table']}位 / {p_score_obj['rank_points']}pt)"
+        else:
+            score_status = "<span style='color:#94A3B8; font-size: 0.85rem;'>未入力</span>"
+
+        st.markdown(
+            f"""
+            <div style="padding: 0.6rem 0.8rem; border-radius: 8px; border: 1px solid #E2E8F0; margin-bottom: 0.4rem; display: flex; justify-content: space-between; align-items: center; {highlight_style}">
+                <div>
+                    <span style="font-size: 0.85rem; color: #64748B;">{s_info['seat_number']}番席</span>
+                    <strong style="margin-left: 0.4rem; font-size: 0.95rem;">{s_info['player_name']}</strong>
+                    {'<span style="font-size: 0.75rem; color: #4F46E5; margin-left: 4px;">(あなた)</span>' if is_me else ''}
+                </div>
+                <div>{score_status}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
 
 
 # ==============================================================================
-# 画面3: ダッシュボード画面（閲覧専用）
+# 画面3: 順位・座席表ダッシュボード (スマホ最適化)
 # ==============================================================================
 def render_dashboard_page():
-    st.markdown('<div class="main-header">📊 大会ダッシュボード</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="sub-text">リアルタイムの総合順位ランキングおよび各ラウンドの座席表を閲覧できます。</div>',
-        unsafe_allow_html=True,
-    )
-
-    tab_ranking, tab_seats = st.tabs(["🏆 総合ランキング", "🪑 座席表"])
+    tab_rank, tab_seat = st.tabs(["🏆 総合ランキング", "🪑 座席表"])
 
     # ---------------------------------------------------------
-    # タブ1: 総合ランキング
+    # タブ1: 総合ランキング (スマホで見やすいカードリスト)
     # ---------------------------------------------------------
-    with tab_ranking:
+    with tab_rank:
         players = db.get_all_players()
         if not players:
             st.info("参加者がまだ登録されていません。")
-        else:
-            all_scores = db.get_all_scores_summary()
+            return
+
+        all_scores = db.get_all_scores_summary()
+
+        col_r1, col_r2 = st.columns([3, 1])
+        with col_r1:
+            target_rounds = st.multiselect(
+                "集計ラウンド",
+                ["予選1", "予選2", "決勝"],
+                default=["予選1", "予選2"],
+                label_visibility="collapsed",
+            )
+        with col_r2:
+            if st.button("🔄 更新", use_container_width=True):
+                st.rerun()
+
+        if not target_rounds:
+            st.warning("集計対象のラウンドを選択してください。")
+            return
+
+        rankings = logic.calculate_overall_ranking(players, all_scores, target_rounds=target_rounds)
+
+        st.caption("※ 順位ルール: 「順位点合計」優先 ＞ 同点なら「素点合計」優先")
+
+        for p in rankings:
+            rank = p["overall_rank"]
             
-            col_filter1, col_filter2 = st.columns([2, 1])
-            with col_filter1:
-                calc_rounds = st.multiselect(
-                    "ランキング集計対象ラウンド",
-                    ["予選1", "予選2", "決勝"],
-                    default=["予選1", "予選2"],
-                    help="予選のみ、または決勝を含めた総合ランキングを切り替えられます",
-                )
-            with col_filter2:
-                if st.button("🔄 最新状況に更新", use_container_width=True):
-                    st.rerun()
+            # 上位スタイリング
+            card_class = "rank-card"
+            badge_icon = f"{rank}"
+            if rank == 1:
+                card_class += " rank-top1"
+                badge_icon = "👑 1"
+            elif rank == 2:
+                card_class += " rank-top2"
+                badge_icon = "🥈 2"
+            elif rank == 3:
+                card_class += " rank-top3"
+                badge_icon = "🥉 3"
 
-            if not calc_rounds:
-                st.warning("集計対象のラウンドを1つ以上選択してください。")
-            else:
-                ranking_data = logic.calculate_overall_ranking(players, all_scores, target_rounds=calc_rounds)
-                
-                # テーブル表示用のデータフレーム構築
-                table_rows = []
-                for p in ranking_data:
-                    role_str = "運営" if p["role"] == "admin" else "一般"
-                    row = {
-                        "総合順位": f"{p['overall_rank']} 位",
-                        "名前": p["player_name"],
-                        "属性": role_str,
-                        "合計順位点": f"{p['total_rank_points']} pt",
-                        "合計スコア": f"{p['total_score']} 点",
-                    }
-                    # ラウンド別詳細
-                    for r_name in ["予選1", "予選2", "決勝"]:
-                        if r_name in calc_rounds:
-                            r_info = p["round_details"].get(r_name)
-                            if r_info:
-                                row[f"{r_name} (点/pt)"] = f"{r_info['score']}点 ({r_info['rank_points']}pt)"
-                            else:
-                                row[f"{r_name} (点/pt)"] = "未記録"
-                    table_rows.append(row)
+            role_tag = '<span class="role-badge-admin">運営</span>' if p["role"] == "admin" else ""
 
-                df_rank = pd.DataFrame(table_rows)
+            # ラウンド別内訳のテキスト
+            detail_texts = []
+            for r_name in target_rounds:
+                r_obj = p["round_details"].get(r_name)
+                if r_obj:
+                    detail_texts.append(f"{r_name}: {r_obj['score']}点({r_obj['rank_points']}pt)")
+                else:
+                    detail_texts.append(f"{r_name}: -")
+            detail_str = " | ".join(detail_texts)
 
-                # 上位入賞者を強調
-                st.markdown(f"#### 🏅 総合順位一覧 ({len(df_rank)}名)")
-                st.caption("※ 順位ルール: 「順位点の合計」優先 ＞ 同点の場合は「獲得スコアの合計」優先")
-                
-                st.dataframe(
-                    df_rank,
-                    use_container_width=True,
-                    hide_index=True,
+            # 決勝進出ボーダー表示（10位と11位の間）
+            if rank == 11 and "予選2" in target_rounds:
+                st.markdown(
+                    """
+                    <div style="text-align: center; margin: 0.6rem 0; padding: 0.2rem; background-color: #FEF3C7; color: #92400E; border-radius: 6px; font-size: 0.75rem; font-weight: bold;">
+                        ▲ 上位10名: チャンピオン卓進出ライン ▲
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
 
+            st.markdown(
+                f"""
+                <div class="{card_class}">
+                    <div class="rank-badge">{badge_icon}</div>
+                    <div class="rank-name-box">
+                        <div class="rank-name">{p['player_name']} {role_tag}</div>
+                        <div class="rank-meta">{detail_str}</div>
+                    </div>
+                    <div class="rank-score-box">
+                        <div class="rank-points-text">{p['total_rank_points']} pt</div>
+                        <div class="rank-score-text">計 {p['total_score']} 点</div>
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
     # ---------------------------------------------------------
-    # タブ2: 座席表
+    # タブ2: 座席表 (スマホ用カード表示)
     # ---------------------------------------------------------
-    with tab_seats:
-        round_for_seats = st.radio(
-            "表示するラウンドの座席表",
+    with tab_seat:
+        selected_round_seat = st.radio(
+            "ラウンド選択",
             ["予選1", "予選2", "決勝"],
             horizontal=True,
+            key="dash_seat_round_radio",
         )
 
-        seats = db.get_seats_by_round(round_for_seats)
+        seats = db.get_seats_by_round(selected_round_seat)
         if not seats:
-            st.info(f"💡 {round_for_seats} の座席割り当てはまだ行われていません。運営の抽選をお待ちください。")
-        else:
-            # 卓ごとに分割
-            table_dict: Dict[str, List[Dict[str, Any]]] = {}
-            for s in seats:
-                table_dict.setdefault(s["table_name"], []).append(s)
+            st.info(f"💡 {selected_round_seat} の座席割り当てはまだ行われていません。")
+            return
 
-            # 卓表示
-            col_list = st.columns(len(table_dict))
-            for idx, (tbl_name, p_list) in enumerate(table_dict.items()):
-                with col_list[idx]:
-                    badge_class = "metric-card"
-                    if "チャンピオン" in tbl_name:
-                        st.markdown(f"### 👑 {tbl_name}")
-                    elif "シルバー" in tbl_name:
-                        st.markdown(f"### 🥈 {tbl_name}")
-                    elif "ブロンズ" in tbl_name:
-                        st.markdown(f"### 🥉 {tbl_name}")
-                    else:
-                        st.markdown(f"### 🎲 {tbl_name}")
+        # 卓ごとに分割
+        tables: dict = {}
+        for s in seats:
+            tables.setdefault(s["table_name"], []).append(s)
 
-                    # 卓内の人数サマリー
-                    admin_c = sum(1 for p in p_list if p["role"] == "admin")
-                    gen_c = sum(1 for p in p_list if p["role"] == "general")
-                    st.caption(f"定員: {len(p_list)}名 (運営: {admin_c}名 / 一般: {gen_c}名)")
+        # 卓の切り替えタブ
+        table_names = list(tables.keys())
+        selected_table_tab = st.radio(
+            "表示卓",
+            table_names,
+            horizontal=True,
+            key="dash_table_tab_radio",
+        )
 
-                    # 座席番号順に表示
-                    p_list.sort(key=lambda x: x["seat_number"])
-                    df_seat_table = pd.DataFrame([
-                        {
-                            "席番": f"{p['seat_number']} 番",
-                            "名前": p["player_name"],
-                            "属性": "運営" if p["role"] == "admin" else "一般",
-                        }
-                        for p in p_list
-                    ])
-                    st.dataframe(df_seat_table, use_container_width=True, hide_index=True)
+        current_table_players = tables.get(selected_table_tab, [])
+        current_table_players.sort(key=lambda x: x["seat_number"])
+
+        admin_in_tbl = sum(1 for p in current_table_players if p["role"] == "admin")
+        gen_in_tbl = sum(1 for p in current_table_players if p["role"] == "general")
+
+        st.markdown(
+            f"""
+            <div style="background-color: #F8FAFC; border-radius: 10px; padding: 0.8rem; margin: 0.5rem 0 1rem 0; border: 1px solid #E2E8F0; text-align: center;">
+                <div style="font-size: 1.1rem; font-weight: 700; color: #1E293B;">🎲 {selected_table_tab} 座席一覧</div>
+                <div style="font-size: 0.8rem; color: #64748B;">定員: {len(current_table_players)}名 (運営: {admin_in_tbl}名 / 一般: {gen_in_tbl}名)</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        for p in current_table_players:
+            role_badge = '<span class="role-badge-admin">運営</span>' if p["role"] == "admin" else '<span class="role-badge-gen">一般</span>'
+            st.markdown(
+                f"""
+                <div style="background-color: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 10px; padding: 0.65rem 0.9rem; margin-bottom: 0.4rem; display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong style="color: #4F46E5; font-size: 1.1rem; min-width: 2rem; display: inline-block;">{p['seat_number']}</strong>
+                        <span style="font-size: 0.95rem; font-weight: 600; margin-left: 0.3rem;">{p['player_name']}</span>
+                    </div>
+                    <div>{role_badge}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
 
 # ==============================================================================
-# 画面4: 管理者ページ
+# 画面4: 管理者ページ (スマホ最適化)
 # ==============================================================================
 def render_admin_page():
-    st.markdown('<div class="main-header">⚙️ 管理者ページ</div>', unsafe_allow_html=True)
-    st.markdown(
-        '<div class="sub-text">パスワード保護された運営者専用エリアです。参加者のタグ付け（運営／一般）や座席抽選、大会進行を管理します。</div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown("### ⚙️ 管理者ページ")
+    st.caption("運営スタッフ専用の大会進行・座席抽選・設定管理コンソールです。")
 
-    # 運営ログイン認証（セッション管理）
+    # セッション認証
     if "admin_logged_in" not in st.session_state:
         st.session_state["admin_logged_in"] = False
 
     if not st.session_state["admin_logged_in"]:
-        col_login, _ = st.columns([1, 1])
-        with col_login:
-            with st.form("admin_login_form"):
-                st.markdown("### 🔒 管理者ログイン")
-                st.caption("管理者パスワードを入力してアクセスしてください。")
-                pw_input = st.text_input("パスワード", type="password", placeholder="管理者パスワードを入力")
-                login_btn = st.form_submit_button("ログイン", use_container_width=True)
+        with st.form("mobile_admin_login"):
+            pw_input = st.text_input("管理者パスワード", type="password", placeholder="パスワードを入力")
+            login_btn = st.form_submit_button("🔓 ログイン", use_container_width=True, type="primary")
 
-                if login_btn:
-                    if pw_input == DEFAULT_ADMIN_PASSWORD:
-                        st.session_state["admin_logged_in"] = True
-                        st.success("ログインしました！")
-                        st.rerun()
-                    else:
-                        st.error("パスワードが正しくありません。")
+            if login_btn:
+                if pw_input == DEFAULT_ADMIN_PASSWORD:
+                    st.session_state["admin_logged_in"] = True
+                    st.success("ログインしました！")
+                    st.rerun()
+                else:
+                    st.error("パスワードが正しくありません。")
         return
 
-    # ログインヘッダー
-    head_col1, head_col2 = st.columns([3, 1])
-    with head_col1:
-        st.success("🔓 管理者として認証されています")
-    with head_col2:
-        if st.button("🚪 ログアウト", use_container_width=True):
+    # ログアウトボタン
+    col_auth, col_logout = st.columns([3, 1])
+    with col_auth:
+        st.success("🔓 管理者認証中")
+    with col_logout:
+        if st.button("ログアウト", use_container_width=True):
             st.session_state["admin_logged_in"] = False
             st.rerun()
 
-    # 参加者サマリー
     players = db.get_all_players()
     total_count = len(players)
     admin_count = sum(1 for p in players if p["role"] == "admin")
     gen_count = sum(1 for p in players if p["role"] == "general")
 
-    m_col1, m_col2, m_col3 = st.columns(3)
-    with m_col1:
-        st.metric("総エントリー数", f"{total_count} / 30 名")
-    with m_col2:
-        st.metric("運営メンバー数", f"{admin_count} 名")
-    with m_col3:
-        st.metric("一般参加者数", f"{gen_count} 名")
+    # サマリー指標
+    col_m1, col_m2, col_m3 = st.columns(3)
+    col_m1.metric("総数", f"{total_count}名")
+    col_m2.metric("運営", f"{admin_count}名")
+    col_m3.metric("一般", f"{gen_count}名")
 
-    # 管理タブ構成（参加者タグ付けを一番先頭に配置）
-    admin_tab1, admin_tab2, admin_tab3, admin_tab4 = st.tabs([
-        "👥 参加者一覧・タグ付け",
-        "🎯 座席抽選・大会進行",
-        "📊 スコア進捗・入力状況",
-        "🛠️ リハーサル・データリセット",
+    admin_tabs = st.tabs([
+        "👥 属性タグ付け",
+        "🎯 座席抽選",
+        "📊 入力進捗",
+        "🛠️ テスト/初期化",
     ])
 
     # ---------------------------------------------------------
-    # タブ1: 参加者一覧・タグ付け（運営／一般）
+    # タブ1: 属性タグ付け（スマホで片手操作できるボタンスタイル）
     # ---------------------------------------------------------
-    with admin_tab1:
-        st.markdown("### 👥 参加者一覧と属性タグ付け")
-        st.markdown(
-            "ここで各参加者の属性（**運営** または **一般**）を切り替えます。\n"
-            "タグ付けされた属性情報は、予選の卓均等振り分けや決勝の運営足切り処理に連動します。"
-        )
+    with admin_tabs[0]:
+        st.markdown("#### 👥 参加者タグ付け (運営 / 一般)")
+        st.caption("各参加者の属性をタップで切り替えます。予選の卓均等配分や決勝足切りに反映されます。")
 
         if not players:
-            st.info("現在登録されている参加者はいません。エントリー画面から登録するか、下の「手動登録」をご利用ください。")
+            st.info("参加者がまだいません。")
         else:
-            # テーブル編集用のデータフレーム構築
-            edit_data = []
             for p in players:
-                edit_data.append({
-                    "ID": p["id"],
-                    "つなげーとID": p["tsunagate_id"],
-                    "名前": p["name"],
-                    "属性": "運営" if p["role"] == "admin" else "一般",
-                })
-            df_edit = pd.DataFrame(edit_data)
-
-            st.markdown("#### 📋 参加者属性の一括編集テーブル")
-            st.caption("表の「属性」セルをクリックして「一般」または「運営」を選択し、下の保存ボタンを押してください。")
-
-            edited_df = st.data_editor(
-                df_edit,
-                column_config={
-                    "ID": st.column_config.NumberColumn(disabled=True),
-                    "つなげーとID": st.column_config.TextColumn(disabled=True),
-                    "名前": st.column_config.TextColumn(disabled=True),
-                    "属性": st.column_config.SelectboxColumn(
-                        "属性 (運営 / 一般)",
-                        options=["一般", "運営"],
-                        required=True,
-                        help="予選の卓均等配分および決勝の足切り対象になります",
-                    ),
-                },
-                disabled=["ID", "つなげーとID", "名前"],
-                hide_index=True,
-                use_container_width=True,
-                key="player_role_editor",
-            )
-
-            if st.button("💾 タグ付けの変更を一括保存する", type="primary", use_container_width=True):
-                # 変更内容をDBに反映
-                role_update_dict = {}
-                for _, row in edited_df.iterrows():
-                    pid = int(row["ID"])
-                    new_role = "admin" if row["属性"] == "運営" else "general"
-                    role_update_dict[pid] = new_role
-                db.update_player_roles_bulk(role_update_dict)
-                st.success("✅ 参加者の属性タグ付けを正常に更新・保存しました！")
-                st.rerun()
-
-            st.markdown("---")
-            # クイック個別切り替え（スマホやタブレットで1人ずつサッと変更したい時用）
-            with st.expander("⚡ 個別クイック切り替え"):
-                st.caption("特定の参加者の属性をワンクリックで変更できます。")
-                target_p_id = st.selectbox(
-                    "対象の参加者を選択",
-                    [p["id"] for p in players],
-                    format_func=lambda pid: next(
-                        f"ID:{p['id']} - {p['name']} (現在: {'運営' if p['role'] == 'admin' else '一般'})"
-                        for p in players if p["id"] == pid
-                    ),
-                )
-                current_p = next(p for p in players if p["id"] == target_p_id)
-                current_role_label = "運営" if current_p["role"] == "admin" else "一般"
-                next_role = "general" if current_p["role"] == "admin" else "admin"
-                next_role_label = "一般に変更" if current_p["role"] == "admin" else "運営に変更"
-
-                if st.button(f"🔄 {current_p['name']} さんを「{next_role_label}」する"):
-                    db.update_player_role(target_p_id, next_role)
-                    st.success(f"{current_p['name']} さんの属性を「{'運営' if next_role == 'admin' else '一般'}」に変更しました。")
-                    st.rerun()
-
-        # 参加者の追加・削除
-        st.markdown("---")
-        col_act1, col_act2 = st.columns(2)
-        with col_act1:
-            with st.expander("➕ 参加者の手動追加 (管理者代理登録)"):
-                with st.form("manual_add_player_form", clear_on_submit=True):
-                    m_tsunagate = st.text_input("つなげーとID", placeholder="tsunagate_001")
-                    m_name = st.text_input("名前 / ニックネーム", placeholder="参加者名")
-                    m_role = st.selectbox("初期属性", ["一般", "運営"])
-                    m_sub = st.form_submit_button("参加者を追加する")
-                    if m_sub:
-                        if not m_tsunagate.strip() or not m_name.strip():
-                            st.error("つなげーとIDと名前は必須です。")
-                        else:
-                            role_val = "admin" if m_role == "運営" else "general"
-                            ok, msg = db.add_player(m_tsunagate, m_name, role_val)
-                            if ok:
-                                st.success(f"{m_name} さんを追加しました！")
-                                st.rerun()
-                            else:
-                                st.error(msg)
-
-        with col_act2:
-            with st.expander("🗑️ 参加者の削除 (誤登録の修正)"):
-                if players:
-                    del_id = st.selectbox(
-                        "削除する参加者",
-                        [p["id"] for p in players],
-                        format_func=lambda pid: next(f"ID:{p['id']} - {p['name']}" for p in players if p["id"] == pid),
+                is_admin = (p["role"] == "admin")
+                col_p_info, col_p_btn = st.columns([3, 2])
+                with col_p_info:
+                    tag_html = '<span class="role-badge-admin">運営</span>' if is_admin else '<span class="role-badge-gen">一般</span>'
+                    st.markdown(
+                        f"""
+                        <div style="padding: 0.3rem 0;">
+                            <strong>{p['name']}</strong> {tag_html}
+                            <div style="font-size: 0.75rem; color: #94A3B8;">ID: {p['tsunagate_id']}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
                     )
-                    if st.button("選択した参加者を削除", type="secondary"):
-                        db.delete_player(del_id)
-                        st.warning("参加者を削除しました。")
+                with col_p_btn:
+                    btn_label = "一般に戻す" if is_admin else "運営にする"
+                    next_role = "general" if is_admin else "admin"
+                    if st.button(btn_label, key=f"role_btn_{p['id']}", use_container_width=True):
+                        db.update_player_role(p["id"], next_role)
                         st.rerun()
-                else:
-                    st.caption("削除可能な参加者はいません。")
+
+        # 参加者の手動追加・削除
+        st.markdown("---")
+        with st.expander("➕ 参加者の手動追加 (代理登録)"):
+            with st.form("manual_add_player_form", clear_on_submit=True):
+                m_tsunagate = st.text_input("つなげーとID", placeholder="tsunagate_001")
+                m_name = st.text_input("お名前 / ニックネーム", placeholder="参加者名")
+                m_role = st.selectbox("初期属性", ["一般", "運営"])
+                m_sub = st.form_submit_button("追加する", use_container_width=True)
+                if m_sub:
+                    if not m_tsunagate.strip() or not m_name.strip():
+                        st.error("IDとお名前は必須です。")
+                    else:
+                        ok, msg = db.add_player(m_tsunagate, m_name, "admin" if m_role == "運営" else "general")
+                        if ok:
+                            st.success(f"{m_name} さんを追加しました！")
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+        with st.expander("🗑️ 参加者の削除"):
+            if players:
+                del_id = st.selectbox(
+                    "削除する参加者",
+                    [p["id"] for p in players],
+                    format_func=lambda pid: next(f"{p['name']} ({p['role']})" for p in players if p["id"] == pid),
+                )
+                if st.button("選択した参加者を削除", use_container_width=True, type="secondary"):
+                    db.delete_player(del_id)
+                    st.warning("参加者を削除しました。")
+                    st.rerun()
 
     # ---------------------------------------------------------
     # タブ2: 座席抽選・大会進行
     # ---------------------------------------------------------
-    with admin_tab2:
-        st.markdown("### 🎲 各ラウンドの座席自動割り当て")
-        
+    with admin_tabs[1]:
+        st.markdown("#### 🎯 座席自動抽選")
+
         if len(players) < 3:
-            st.warning("⚠️ 参加者が3名未満のため、座席割り当てを実行できません。まずは参加者を登録してください。")
+            st.warning("⚠️ 参加者が3名未満のため抽選できません。")
         else:
-            # 1. 予選1
-            with st.expander("【アクション1】予選1の座席割り当て", expanded=True):
-                st.markdown(
-                    "タグ付けされた**運営メンバー**をA/B/C卓に均等（各卓1〜2名）に振り分け、残りの枠に**一般メンバー**をシャッフル配分します。"
-                )
-                existing_p1_seats = db.get_seats_by_round("予選1")
-                if existing_p1_seats:
-                    st.info(f"ℹ️ 予選1は既に割り当て済みです（{len(existing_p1_seats)}名割り当て中）。再実行すると上書きされます。")
-                
-                if st.button("🚀 予選1の座席割り当てを実行する", type="primary", key="btn_assign_p1"):
+            # 予選1
+            with st.expander("🎲 予選1 座席抽選", expanded=True):
+                st.caption("運営をA/B/C卓に均等配分し、一般をシャッフル配分します。")
+                if st.button("🚀 予選1の座席を抽選する", type="primary", use_container_width=True, key="admin_p1_btn"):
                     assignments = logic.assign_preliminary_seats(players, table_names=["A卓", "B卓", "C卓"])
                     db.save_seats("予選1", assignments)
                     db.set_setting("current_round", "予選1")
-                    st.success("🎉 予選1の座席割り当てが完了しました！")
+                    st.success("🎉 予選1の座席を抽選・保存しました！")
                     st.rerun()
 
-            # 2. 予選2
-            with st.expander("【アクション2】予選2の座席割り当て", expanded=False):
-                st.markdown(
-                    "予選1と同様に、運営メンバーを均等に振り分け、一般メンバーをシャッフルしてA/B/C卓へ割り当てます。"
-                )
-                existing_p2_seats = db.get_seats_by_round("予選2")
-                if existing_p2_seats:
-                    st.info(f"ℹ️ 予選2は既に割り当て済みです（{len(existing_p2_seats)}名割り当て中）。再実行すると上書きされます。")
-
-                if st.button("🚀 予選2の座席割り当てを実行する", type="primary", key="btn_assign_p2"):
+            # 予選2
+            with st.expander("🎲 予選2 座席抽選", expanded=False):
+                st.caption("同様に運営均等＋一般シャッフル配分します。")
+                if st.button("🚀 予選2の座席を抽選する", type="primary", use_container_width=True, key="admin_p2_btn"):
                     assignments = logic.assign_preliminary_seats(players, table_names=["A卓", "B卓", "C卓"])
                     db.save_seats("予選2", assignments)
                     db.set_setting("current_round", "予選2")
-                    st.success("🎉 予選2の座席割り当てが完了しました！")
+                    st.success("🎉 予選2の座席を抽選・保存しました！")
                     st.rerun()
 
-            # 3. 決勝ラウンド
-            with st.expander("【アクション3】決勝ラウンドの座席割り当て (足切り機能付き)", expanded=True):
-                st.markdown(
-                    "予選1・2の総合順位に基づき、1〜10位を「チャンピオン卓」、11〜20位を「シルバー卓」、21〜30位を「ブロンズ卓」に仮配置します。\n\n"
-                    "チャンピオン卓内の運営メンバーが上限を超える場合、**順位の低い運営をシルバー卓へ降格**させ、**シルバー卓の最上位一般メンバーをチャンピオン卓へ昇格**させます。"
-                )
-
-                # 上限人数設定
-                current_limit = int(db.get_setting("admin_limit_champion", "3"))
+            # 決勝ラウンド
+            with st.expander("🏆 決勝ラウンド座席抽選 (足切り付き)", expanded=True):
+                st.caption("予選1・2の総合順位からチャンピオン卓、シルバー卓、ブロンズ卓に仮配置し、運営足切り・繰り上げを実行します。")
+                
+                curr_limit = int(db.get_setting("admin_limit_champion", "3"))
                 admin_limit = st.slider(
-                    "👑 チャンピオン卓に進出できる運営メンバーの上限人数",
+                    "👑 チャンピオン卓の運営上限人数",
                     min_value=0,
                     max_value=10,
-                    value=current_limit,
-                    help="チャンピオン卓にこれ以上の運営が進出した場合、一般参加者が繰り上げ昇格します (デフォルト3人)",
+                    value=curr_limit,
+                    help="この人数を超える運営はシルバー卓へ降格し、一般参加者が繰り上げ昇格します",
                 )
-                if admin_limit != current_limit:
+                if admin_limit != curr_limit:
                     db.set_setting("admin_limit_champion", str(admin_limit))
 
-                existing_final_seats = db.get_seats_by_round("決勝")
-                if existing_final_seats:
-                    st.info(f"ℹ️ 決勝ラウンドは既に割り当て済みです（{len(existing_final_seats)}名割り当て中）。再実行すると上書きされます。")
-
-                if st.button("🏆 決勝ラウンドの座席割り当て（足切り含む）を実行する", type="primary", key="btn_assign_final"):
+                if st.button("🏆 決勝の座席抽選（足切り実行）", type="primary", use_container_width=True, key="admin_final_btn"):
                     all_scores = db.get_all_scores_summary()
-                    # 予選1・予選2のスコアに基づいて総合順位算出
                     overall_rankings = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選1", "予選2"])
-                    
                     final_assignments, swap_history = logic.assign_final_seats_with_admin_cutoff(
                         overall_rankings,
                         admin_limit_champion=admin_limit,
                     )
-                    
                     db.save_seats("決勝", final_assignments)
                     db.set_setting("current_round", "決勝")
-
                     st.success("🎉 決勝ラウンドの座席割り当てが完了しました！")
 
-                    # 足切り入替履歴の表示
                     if swap_history:
-                        st.markdown("#### 🔄 運営足切り・繰り上げ昇格の処理履歴")
+                        st.markdown("##### 🔄 運営足切り・繰り上げ履歴")
                         for sw in swap_history:
                             st.write(
-                                f"- 🔻 **降格**: 運営 **{sw['demoted_admin']}** 選手 (予選総合 {sw['demoted_rank']}位) ➔ {sw['from_table']}\n"
-                                f"  🔺 **昇格**: 一般 **{sw['promoted_general']}** 選手 (予選総合 {sw['promoted_rank']}位) ➔ チャンピオン卓"
+                                f"🔻 運営 {sw['demoted_admin']} (予選{sw['demoted_rank']}位) ➔ 降格\n"
+                                f"🔺 一般 {sw['promoted_general']} (予選{sw['promoted_rank']}位) ➔ チャンピオン卓へ繰り上げ！"
                             )
                     else:
-                        st.info("※ チャンピオン卓内の運営人数は上限内だったため、足切り・繰り上げは発生しませんでした。")
-
+                        st.info("※ 運営人数は上限内だったため、足切りは発生しませんでした。")
                     st.rerun()
 
     # ---------------------------------------------------------
-    # タブ3: スコア進捗・入力状況
+    # タブ3: 入力進捗
     # ---------------------------------------------------------
-    with admin_tab3:
-        st.markdown("### 📊 ラウンド別スコア入力進捗")
+    with admin_tabs[2]:
+        st.markdown("#### 📊 ラウンド別スコア入力進捗")
         for r_name in ["予選1", "予選2", "決勝"]:
             r_seats = db.get_seats_by_round(r_name)
             r_scores = db.get_scores_by_round(r_name)
-            
             sc_count = len(r_scores)
             st_count = len(r_seats)
             pct = (sc_count / st_count) if st_count > 0 else 0
-            
-            st.markdown(f"**{r_name}**: {sc_count} / {st_count} 名 入力完了 ({int(pct*100)}%)")
+
+            st.markdown(f"**{r_name}**: {sc_count} / {st_count} 名 完了 ({int(pct*100)}%)")
             st.progress(pct)
 
-            # 未入力者のリストアップ
             if st_count > 0 and sc_count < st_count:
                 entered_pids = {s["player_id"] for s in r_scores}
                 unentered = [s["player_name"] for s in r_seats if s["player_id"] not in entered_pids]
-                st.caption(f"未入力者: {', '.join(unentered)}")
+                st.caption(f"未入力: {', '.join(unentered)}")
 
     # ---------------------------------------------------------
-    # タブ4: リハーサル・データリセット
+    # タブ4: リハーサル / 初期化
     # ---------------------------------------------------------
-    with admin_tab4:
-        st.markdown("### 🧪 テスト用ダミーデータ投入 (リハーサル用)")
-        st.caption("動作検証用に、30名（運営5名、一般25名）の一括登録および予選スコアを一括自動生成します。")
+    with admin_tabs[3]:
+        st.markdown("#### 🧪 リハーサル用ダミーデータ")
+        if st.button("👥 30名のダミープレイヤーを一括作成", use_container_width=True):
+            admin_names = ["運営A", "運営B", "運営C", "運営D", "運営E"]
+            for i, name in enumerate(admin_names, 1):
+                db.add_player(f"admin_{i:02d}", name, "admin")
+            for i in range(1, 26):
+                db.add_player(f"user_{i:02d}", f"一般{i:02d}", "general")
+            st.success("ダミー30名を登録しました！")
+            st.rerun()
 
-        col_dummy1, col_dummy2 = st.columns(2)
-        with col_dummy1:
-            if st.button("👥 30名のダミープレイヤーを一括作成", use_container_width=True):
-                # 運営5名
-                admin_names = ["運営パンダA", "運営パンダB", "運営パンダC", "運営パンダD", "運営パンダE"]
-                for i, name in enumerate(admin_names, 1):
-                    db.add_player(f"admin_{i:02d}", name, "admin")
-                # 一般25名
-                for i in range(1, 26):
-                    db.add_player(f"user_{i:02d}", f"一般プレイヤー{i:02d}", "general")
-                st.success("ダミープレイヤー30名（運営5名・一般25名）を登録しました！")
-                st.rerun()
-
-        with col_dummy2:
-            if st.button("🎲 予選1・2のランダムスコアを一括生成", use_container_width=True):
-                for r_name in ["予選1", "予選2"]:
-                    seats = db.get_seats_by_round(r_name)
-                    if not seats:
-                        st.error(f"{r_name} の座席割り当てがまだ実行されていません。")
-                        continue
-                    for s in seats:
-                        random_score = random.randint(30, 120)
-                        db.save_score(r_name, s["player_id"], random_score, s["table_name"])
-                    scs = db.get_scores_by_round(r_name)
-                    calc = logic.calculate_table_ranks_and_points(scs)
-                    db.update_rank_points_in_db(r_name, calc)
-                st.success("予選1・2のスコアを自動生成し、順位点を計算しました！")
-                st.rerun()
+        if st.button("🎲 予選1・2のランダムスコアを一括生成", use_container_width=True):
+            for r_name in ["予選1", "予選2"]:
+                seats = db.get_seats_by_round(r_name)
+                if not seats:
+                    st.error(f"{r_name} の座席が未抽選です。")
+                    continue
+                for s in seats:
+                    db.save_score(r_name, s["player_id"], random.randint(30, 120), s["table_name"])
+                scs = db.get_scores_by_round(r_name)
+                calc = logic.calculate_table_ranks_and_points(scs)
+                db.update_rank_points_in_db(r_name, calc)
+            st.success("予選1・2のスコアを自動生成しました！")
+            st.rerun()
 
         st.markdown("---")
-        st.markdown("### ⚠️ 大会データのリセット")
-        st.caption("全スコア・座席割り当て・参加者情報を完全にクリアし、大会を初期状態に戻します。")
-        
-        with st.expander("🚨 全データ削除の確認"):
-            confirm_text = st.text_input("確認のため「RESET」と入力してください")
-            if st.button("💥 全データを完全にリセットする", type="primary"):
+        st.markdown("#### ⚠️ 大会データリセット")
+        with st.expander("🚨 全データ削除"):
+            confirm_text = st.text_input("確認のため「RESET」と入力")
+            if st.button("💥 全データをリセットする", type="primary", use_container_width=True):
                 if confirm_text == "RESET":
                     db.reset_all_data()
-                    st.success("全データをリセットしました。")
+                    st.success("リセット完了しました。")
                     st.rerun()
                 else:
                     st.error("確認テキストが一致しません。")
@@ -796,13 +840,13 @@ def render_admin_page():
 # メインエントリーポイント
 # ==============================================================================
 def main():
-    selected_menu = render_sidebar()
+    selected_menu = render_mobile_navigation()
 
-    if selected_menu == "📝 エントリー画面":
+    if selected_menu == "📝 エントリー":
         render_entry_page()
-    elif selected_menu == "🎲 スコア入力画面":
+    elif selected_menu == "🎲 スコア入力":
         render_score_page()
-    elif selected_menu == "📊 ダッシュボード (閲覧専用)":
+    elif selected_menu == "📊 順位・座席表":
         render_dashboard_page()
     elif selected_menu == "⚙️ 管理者ページ":
         render_admin_page()
@@ -810,4 +854,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
