@@ -104,76 +104,168 @@ st.set_page_config(
 # データベース初期化
 db.init_db()
 
-# モバイルファーストCSSスタイル定義
+# モバイルファースト＆モダンWebアプリCSS定義
 st.markdown(
     """
     <style>
-    html, body, [class*="css"] {
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    /* Streamlit標準のヘッダー・フッター・ツールバーを非表示にし、ネイティブアプリ化 */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header[data-testid="stHeader"] {
+        display: none !important;
     }
-    
+    [data-testid="stToolbar"] {
+        display: none !important;
+    }
+    .block-container {
+        padding-top: 1.2rem !important;
+        padding-bottom: 3rem !important;
+        padding-left: 0.9rem !important;
+        padding-right: 0.9rem !important;
+        max-width: 600px !important;
+        margin: 0 auto !important;
+    }
+
+    /* アプリ全体の背景とベースフォント */
+    .stApp {
+        background-color: #F8FAFC !important;
+    }
+    html, body, [class*="css"] {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+        color: #1E293B;
+    }
+
     /* アプリ共通ヘッダー */
     .app-header {
         text-align: center;
-        padding: 0.2rem 0 0.6rem 0;
-        margin-bottom: 0.6rem;
+        padding: 0.2rem 0 0.8rem 0;
+        margin-bottom: 0.4rem;
     }
     .app-title {
-        font-size: 1.5rem;
+        font-size: 1.6rem;
         font-weight: 800;
         color: #0F172A;
         letter-spacing: -0.5px;
+        margin: 0;
+    }
+    .app-subtitle {
+        font-size: 0.82rem;
+        color: #64748B;
+        margin-top: 2px;
+        font-weight: 500;
     }
     
     /* フェーズステータスバナー */
     .phase-badge-container {
-        display: inline-block;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         color: white;
-        padding: 0.35rem 1rem;
-        border-radius: 20px;
-        font-size: 0.85rem;
+        padding: 0.4rem 1.2rem;
+        border-radius: 9999px;
+        font-size: 0.88rem;
         font-weight: 700;
-        margin-top: 0.3rem;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-top: 0.5rem;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.12);
     }
-    .phase-badge-entry { background: linear-gradient(135deg, #3B82F6, #1D4ED8); }
-    .phase-badge-seat { background: linear-gradient(135deg, #8B5CF6, #6D28D9); }
-    .phase-badge-score { background: linear-gradient(135deg, #F59E0B, #D97706); }
-    .phase-badge-result { background: linear-gradient(135deg, #EF4444, #B91C1C); }
+    .phase-badge-entry { background: linear-gradient(135deg, #2563EB, #1D4ED8); }
+    .phase-badge-seat { background: linear-gradient(135deg, #7C3AED, #6D28D9); }
+    .phase-badge-score { background: linear-gradient(135deg, #EA580C, #C2410C); }
+    .phase-badge-result { background: linear-gradient(135deg, #DC2626, #991B1B); }
+
+    /* ラジオボタンをタップしやすいモダンなタブバーへ変形 */
+    div[role="radiogroup"] {
+        display: flex !important;
+        flex-direction: row !important;
+        justify-content: space-between !important;
+        background: #E2E8F0 !important;
+        padding: 5px !important;
+        border-radius: 14px !important;
+        gap: 4px !important;
+        margin-bottom: 1.2rem !important;
+        border: 1px solid #CBD5E1 !important;
+    }
+    div[role="radiogroup"] > label {
+        flex: 1 1 0 !important;
+        background: transparent !important;
+        border-radius: 10px !important;
+        padding: 8px 4px !important;
+        font-weight: 700 !important;
+        font-size: 0.82rem !important;
+        cursor: pointer !important;
+        transition: all 0.15s ease-in-out !important;
+        border: none !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        text-align: center !important;
+        color: #475569 !important;
+        margin: 0 !important;
+    }
+    div[role="radiogroup"] > label:hover {
+        background: rgba(255, 255, 255, 0.6) !important;
+        color: #0F172A !important;
+    }
+    /* ラジオボタンの丸印を完全に非表示 */
+    div[role="radiogroup"] label > div > div:first-child:not([data-testid="stMarkdownContainer"]) {
+        display: none !important;
+    }
+    div[role="radiogroup"] label > div {
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+        width: 100% !important;
+    }
+    div[role="radiogroup"] label p {
+        margin: 0 !important;
+        font-size: 0.84rem !important;
+        font-weight: 700 !important;
+        color: #475569 !important;
+    }
+    /* 選択中のタブの背景ハイライト */
+    div[role="radiogroup"] label:has(input[type="radio"]:checked) {
+        background: #4F46E5 !important;
+        box-shadow: 0 2px 6px rgba(79, 70, 229, 0.35) !important;
+    }
+    div[role="radiogroup"] label:has(input[type="radio"]:checked) p {
+        color: #FFFFFF !important;
+        font-weight: 800 !important;
+    }
 
     /* スマホで見やすいカードUI */
     .mobile-card {
         background-color: #FFFFFF;
-        border-radius: 14px;
-        padding: 1rem 1.1rem;
+        border-radius: 16px;
+        padding: 1.1rem 1.2rem;
         border: 1px solid #E2E8F0;
-        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.04);
-        margin-bottom: 0.9rem;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
+        margin-bottom: 1rem;
     }
     
     /* 座席お知らせビッグバナー */
     .seat-banner {
-        background: linear-gradient(135deg, #4338CA 0%, #3B82F6 100%);
+        background: linear-gradient(135deg, #4F46E5 0%, #3B82F6 100%);
         color: #FFFFFF;
-        border-radius: 16px;
-        padding: 1.3rem;
+        border-radius: 20px;
+        padding: 1.5rem 1.2rem;
         text-align: center;
         margin: 0.8rem 0 1.2rem 0;
-        box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
+        box-shadow: 0 10px 20px -3px rgba(79, 70, 229, 0.35);
     }
     .seat-banner-title {
-        font-size: 0.9rem;
-        opacity: 0.95;
+        font-size: 0.95rem;
+        opacity: 0.92;
         font-weight: 600;
     }
     .seat-banner-main {
-        font-size: 2.1rem;
-        font-weight: 800;
+        font-size: 2.3rem;
+        font-weight: 900;
         margin: 0.4rem 0;
-        letter-spacing: 0.5px;
+        letter-spacing: 1px;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
     }
     .seat-banner-note {
-        font-size: 0.85rem;
+        font-size: 0.88rem;
         opacity: 0.9;
     }
 
@@ -181,11 +273,11 @@ st.markdown(
     .podium-card {
         background: linear-gradient(135deg, #FFFBEB 0%, #FEF3C7 100%);
         border: 2px solid #FCD34D;
-        border-radius: 16px;
-        padding: 1.2rem;
+        border-radius: 20px;
+        padding: 1.4rem;
         text-align: center;
-        margin-bottom: 1rem;
-        box-shadow: 0 4px 6px -1px rgba(245, 158, 11, 0.15);
+        margin-bottom: 1.2rem;
+        box-shadow: 0 6px 12px -2px rgba(245, 158, 11, 0.2);
     }
 
     /* ランキングカード */
@@ -193,49 +285,99 @@ st.markdown(
         display: flex;
         align-items: center;
         justify-content: space-between;
-        padding: 0.75rem 1rem;
-        border-radius: 12px;
+        padding: 0.85rem 1.1rem;
+        border-radius: 14px;
         border: 1px solid #E2E8F0;
         background-color: #FFFFFF;
-        margin-bottom: 0.5rem;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+        margin-bottom: 0.55rem;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.03);
     }
-    .rank-top1 { background: linear-gradient(90deg, #FEF08A 0%, #FFFBEB 100%); border-color: #FDE047; }
-    .rank-top2 { background: linear-gradient(90deg, #F1F5F9 0%, #FFFFFF 100%); border-color: #CBD5E1; }
-    .rank-top3 { background: linear-gradient(90deg, #FFEDD5 0%, #FFF7ED 100%); border-color: #FDBA74; }
+    .rank-top1 {
+        background: linear-gradient(90deg, #FEF08A 0%, #FFFBEB 100%);
+        border-color: #FACC15;
+        box-shadow: 0 4px 8px rgba(250, 204, 21, 0.2);
+    }
+    .rank-top2 {
+        background: linear-gradient(90deg, #E2E8F0 0%, #F8FAFC 100%);
+        border-color: #94A3B8;
+    }
+    .rank-top3 {
+        background: linear-gradient(90deg, #FED7AA 0%, #FFF7ED 100%);
+        border-color: #FB923C;
+    }
     
-    .rank-badge { font-size: 1.2rem; font-weight: 800; width: 2.2rem; text-align: center; }
-    .rank-name-box { flex-grow: 1; margin-left: 0.5rem; }
-    .rank-name { font-size: 1rem; font-weight: 700; color: #1E293B; }
-    .rank-meta { font-size: 0.75rem; color: #64748B; }
+    .rank-badge { font-size: 1.25rem; font-weight: 800; width: 2.2rem; text-align: center; }
+    .rank-name-box { flex-grow: 1; margin-left: 0.6rem; }
+    .rank-name { font-size: 1.05rem; font-weight: 700; color: #0F172A; }
+    .rank-meta { font-size: 0.78rem; color: #64748B; margin-top: 2px; }
     .rank-score-box { text-align: right; }
-    .rank-points-text { font-size: 1.1rem; font-weight: 800; color: #4F46E5; }
-    .rank-score-text { font-size: 0.75rem; color: #64748B; }
+    .rank-points-text { font-size: 1.2rem; font-weight: 800; color: #4F46E5; }
+    .rank-score-text { font-size: 0.78rem; color: #64748B; }
 
     /* タグバッジ */
     .role-badge-admin {
         background-color: #FEF3C7;
         color: #B45309;
-        font-size: 0.7rem;
-        padding: 2px 6px;
-        border-radius: 4px;
-        font-weight: bold;
-        margin-left: 4px;
+        font-size: 0.72rem;
+        padding: 2px 7px;
+        border-radius: 6px;
+        font-weight: 800;
+        margin-left: 5px;
+        border: 1px solid #FDE68A;
     }
     .role-badge-gen {
         background-color: #F1F5F9;
         color: #475569;
-        font-size: 0.7rem;
-        padding: 2px 6px;
-        border-radius: 4px;
-        margin-left: 4px;
+        font-size: 0.72rem;
+        padding: 2px 7px;
+        border-radius: 6px;
+        font-weight: 600;
+        margin-left: 5px;
+        border: 1px solid #E2E8F0;
     }
 
-    .stButton>button {
-        border-radius: 12px;
-        padding: 0.65rem 1rem;
-        font-weight: 700;
-        font-size: 1rem;
+    /* フォームコントロールのスタイル */
+    .stTextInput > div > div > input {
+        border-radius: 12px !important;
+        border: 1.5px solid #CBD5E1 !important;
+        padding: 0.65rem 0.85rem !important;
+        font-size: 1rem !important;
+        background-color: #FFFFFF !important;
+    }
+    .stTextInput > div > div > input:focus {
+        border-color: #4F46E5 !important;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18) !important;
+    }
+    .stSelectbox > div > div {
+        border-radius: 12px !important;
+        border: 1.5px solid #CBD5E1 !important;
+        background-color: #FFFFFF !important;
+    }
+    .stNumberInput > div > div > input {
+        border-radius: 12px !important;
+        border: 1.5px solid #CBD5E1 !important;
+        font-size: 1.3rem !important;
+        font-weight: 800 !important;
+        text-align: center !important;
+        background-color: #FFFFFF !important;
+    }
+
+    /* ボタンのスタイル */
+    .stButton > button {
+        border-radius: 12px !important;
+        padding: 0.75rem 1.2rem !important;
+        font-weight: 800 !important;
+        font-size: 1rem !important;
+        transition: all 0.15s ease !important;
+    }
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #4F46E5 0%, #3730A3 100%) !important;
+        border: none !important;
+        box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35) !important;
+    }
+    .stButton > button:hover {
+        transform: translateY(-1px) !important;
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12) !important;
     }
     </style>
     """,
@@ -252,43 +394,47 @@ def render_header_and_nav():
     # フェーズごとのバッジ装飾クラス
     if "準備" in current_phase:
         badge_class = "phase-badge-seat"
+        phase_icon = "🪑"
     elif "結果入力" in current_phase:
         badge_class = "phase-badge-score"
+        phase_icon = "🎲"
     elif "結果発表" in current_phase:
         badge_class = "phase-badge-result"
+        phase_icon = "🏆"
     else:
         badge_class = "phase-badge-entry"
+        phase_icon = "📝"
 
     st.markdown(
         f"""
         <div class="app-header">
-            <div class="app-title">🐼 パンダロイヤル 大会マネージャー</div>
+            <div class="app-title">🐼 パンダロイヤル</div>
+            <div class="app-subtitle">ダイスゲーム大会マネージャー</div>
             <div class="phase-badge-container {badge_class}">
-                進行状況: {current_phase}
+                <span>{phase_icon}</span>
+                <span>進行状況: {current_phase}</span>
             </div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # 画面上部メニュー
+    # 画面上部メニュー（スマホで1行にすっきり収まる短いラベル）
     menu_options = [
-        "🏠 大会ホーム",
-        "📊 総合順位",
-        "🪑 座席表一覧",
-        "📱 参加用QR",
-        "⚙️ 管理者ページ",
+        "🏠 ホーム",
+        "📊 順位",
+        "🪑 座席",
+        "📱 QR",
+        "⚙️ 管理",
     ]
 
-    if "current_page" not in st.session_state:
+    if "current_page" not in st.session_state or st.session_state["current_page"] not in menu_options:
         st.session_state["current_page"] = menu_options[0]
 
     selected_menu = st.radio(
         "画面メニュー",
         menu_options,
-        index=menu_options.index(st.session_state["current_page"])
-        if st.session_state["current_page"] in menu_options
-        else 0,
+        index=menu_options.index(st.session_state["current_page"]),
         horizontal=True,
         label_visibility="collapsed",
     )
@@ -312,14 +458,23 @@ def render_header_and_nav():
 # 1. エントリーフェーズ画面
 # ==============================================================================
 def render_phase_entry():
-    st.markdown("### 📝 参加者エントリー受付中")
-    st.caption("つなげーとIDとお名前を入力してエントリーしてください。")
-
     players = db.get_all_players()
     current_count = len(players)
 
+    st.markdown(
+        f"""
+        <div class="mobile-card" style="text-align: center; background: linear-gradient(135deg, #EFF6FF 0%, #DBEAFE 100%); border-color: #BFDBFE;">
+            <div style="font-size: 1.15rem; font-weight: 800; color: #1E40AF;">📝 参加者エントリー受付中</div>
+            <div style="font-size: 0.82rem; color: #3B82F6; margin: 0.2rem 0 0.6rem 0;">つなげーとIDとお名前を入力してエントリーしてください</div>
+            <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 0.2rem;">
+                <span style="font-size: 0.85rem; font-weight: 700; color: #1E3A8A;">現在の参加枠</span>
+                <span style="font-size: 1.15rem; font-weight: 900; color: #1D4ED8;">{current_count} <span style="font-size: 0.85rem; font-weight: 600; color: #64748B;">/ 30 名</span></span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.progress(min(current_count / 30.0, 1.0))
-    st.caption(f"現在のエントリー状況: {current_count} / 30 名")
 
     if current_count >= 30:
         st.warning("⚠️ 定員（30名）に達しています。")
@@ -1217,7 +1372,7 @@ def render_admin_page():
 def main():
     selected_menu, current_phase = render_header_and_nav()
 
-    if selected_menu == "🏠 大会ホーム":
+    if selected_menu == "🏠 ホーム":
         # 8つのフェーズに合致したコンテンツを表示
         if current_phase == PHASE_ENTRY:
             render_phase_entry()
@@ -1235,13 +1390,13 @@ def main():
             render_phase_score_input("決勝", "決勝戦　結果入力")
         elif current_phase == PHASE_RESULT:
             render_phase_result()
-    elif selected_menu == "📊 総合順位":
+    elif selected_menu == "📊 順位":
         render_ranking_page()
-    elif selected_menu == "🪑 座席表一覧":
+    elif selected_menu == "🪑 座席":
         render_seats_page()
-    elif selected_menu == "📱 参加用QR":
+    elif selected_menu == "📱 QR":
         render_qr_page()
-    elif selected_menu == "⚙️ 管理者ページ":
+    elif selected_menu == "⚙️ 管理":
         render_admin_page()
 
 
