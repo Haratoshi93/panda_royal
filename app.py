@@ -286,7 +286,7 @@ st.markdown(
     .step-done .step-label { color: #A7F3D0 !important; }
     .step-active .step-label { color: #FFFFFF !important; font-weight: 800; }
 
-    /* 5. ナビゲーションバー（100%横幅・5等分グリッドタブ） */
+    /* 5. ナビゲーションバー（100%横幅・4等分グリッドタブ） */
     [data-testid="stElementContainer"]:has([data-testid="stRadio"]),
     div[data-testid="stRadio"],
     div[data-testid="stRadio"] > div {
@@ -294,7 +294,7 @@ st.markdown(
     }
     div[role="radiogroup"] {
         display: grid !important;
-        grid-template-columns: repeat(5, 1fr) !important;
+        grid-template-columns: repeat(4, 1fr) !important;
         width: 100% !important;
         background: #FFFFFF !important;
         padding: 5px !important;
@@ -689,7 +689,6 @@ def render_header_and_nav():
         "🏠 ホーム",
         "📊 順位",
         "🪑 座席",
-        "📱 QR",
         "⚙️ 管理",
     ]
 
@@ -1221,33 +1220,43 @@ def render_seats_page():
 
 
 # ==============================================================================
-# サブ画面: 参加用QRコード
+# 管理用コンポーネント: 参加用QRコード & URL設定
 # ==============================================================================
-def render_qr_page():
-    access_url = get_current_access_url()
-    qr_bytes = generate_qr_code_image(access_url)
+def render_admin_qr_section():
+    current_url = get_current_access_url()
+    custom_saved_url = db.get_setting("custom_access_url", "")
+    qr_bytes = generate_qr_code_image(current_url)
     qr_b64 = base64.b64encode(qr_bytes).decode()
 
     st.markdown(
-        f'<div class="surface-card" style="text-align: center; padding: 1.5rem 1rem;">'
-        f'<div style="font-size: 1.15rem; font-weight: 900; color: #0F172A; margin-bottom: 0.25rem;">📱 スマホで簡単エントリー＆スコア入力</div>'
-        f'<div style="font-size: 0.82rem; color: #64748B; margin-bottom: 1rem;">カメラアプリで下のQRコードを読み取ってください</div>'
-        f'<div style="display: flex; justify-content: center; margin: 0.5rem 0 1rem 0;">'
-        f'<img src="data:image/png;base64,{qr_b64}" style="width: 240px; height: 240px; border-radius: 16px; border: 2px solid #E2E8F0; padding: 8px; background: #FFFFFF;" />'
+        f'<div class="surface-card" style="text-align: center; padding: 1.2rem 1rem; margin-bottom: 0.8rem;">'
+        f'<div style="font-size: 1.05rem; font-weight: 800; color: #0F172A; margin-bottom: 0.2rem;">📱 参加者案内用 QRコード</div>'
+        f'<div style="font-size: 0.8rem; color: #64748B; margin-bottom: 0.8rem;">会場の参加者にスマホカメラで読み取ってもらうためのQRコードです</div>'
+        f'<div style="display: flex; justify-content: center; margin: 0.4rem 0 0.8rem 0;">'
+        f'<img src="data:image/png;base64,{qr_b64}" style="width: 200px; height: 200px; border-radius: 14px; border: 2px solid #E2E8F0; padding: 6px; background: #FFFFFF;" />'
         f'</div>'
-        f'<div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 10px; padding: 0.55rem; font-family: monospace; font-size: 0.88rem; font-weight: 700; color: #2563EB; word-break: break-all; margin-bottom: 0.4rem;">{access_url}</div>'
+        f'<div style="background-color: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 0.45rem; font-family: monospace; font-size: 0.85rem; font-weight: 700; color: #2563EB; word-break: break-all;">{current_url}</div>'
         f'</div>',
         unsafe_allow_html=True,
     )
 
     st.download_button(
-        "📥 QRコード画像を保存する (印刷・配布用)",
+        "📥 QRコード画像を保存する (印刷・掲示用)",
         data=qr_bytes,
         file_name="panda_royal_qr.png",
         mime="image/png",
         use_container_width=True,
         type="primary",
     )
+
+    st.markdown("---")
+    st.markdown("##### 🌐 公開アクセスURLの変更")
+    with st.form("custom_url_form"):
+        input_custom_url = st.text_input("公開URL", value=custom_saved_url, placeholder="https://panda-royal.streamlit.app/")
+        if st.form_submit_button("💾 URLを保存する", use_container_width=True):
+            db.set_setting("custom_access_url", input_custom_url.strip())
+            st.success("アクセスURLを更新しました！QRコードも自動更新されます。")
+            st.rerun()
 
 
 # ==============================================================================
@@ -1358,7 +1367,7 @@ def render_admin_page():
         "👥 タグ付け",
         "🎯 座席抽選",
         "📊 入力進捗",
-        "📱 URL設定",
+        "📱 QR・URL",
         "🛠️ 管理/DB",
     ])
 
@@ -1486,18 +1495,9 @@ def render_admin_page():
                 unentered = [s["player_name"] for s in r_seats if s["player_id"] not in entered_pids]
                 st.caption(f"未入力 ({r_name}): {', '.join(unentered)}")
 
-    # タブ4: URL設定
+    # タブ4: QR・URL設定
     with admin_tabs[3]:
-        current_url = get_current_access_url()
-        custom_saved_url = db.get_setting("custom_access_url", "")
-        st.markdown(f"現在のアクセスURL: `{current_url}`")
-
-        with st.form("custom_url_form"):
-            input_custom_url = st.text_input("公開URL", value=custom_saved_url, placeholder="https://panda-royal.streamlit.app/")
-            if st.form_submit_button("💾 URLを保存する", use_container_width=True, type="primary"):
-                db.set_setting("custom_access_url", input_custom_url.strip())
-                st.success("アクセスURLを更新しました！")
-                st.rerun()
+        render_admin_qr_section()
 
     # タブ5: バックアップ/初期化
     with admin_tabs[4]:
@@ -1588,8 +1588,6 @@ def main():
         render_ranking_page()
     elif selected_menu == "🪑 座席":
         render_seats_page()
-    elif selected_menu == "📱 QR":
-        render_qr_page()
     elif selected_menu == "⚙️ 管理":
         render_admin_page()
 
