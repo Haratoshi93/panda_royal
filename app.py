@@ -723,7 +723,11 @@ def render_table_seats_cards(seats: list, highlight_player_id: int = -1):
 
     def _build_table_html(t_name: str, t_players: list) -> str:
         theme = get_table_theme(t_name)
-        t_players_sorted = sorted(t_players, key=lambda x: x["seat_number"])
+        # 運営スタッフ（role == 'admin'）を卓の一覧表の上位（最上部）に配置
+        t_players_sorted = sorted(
+            t_players,
+            key=lambda x: (0 if x.get("role") == "admin" else 1, x.get("seat_number", 0))
+        )
         rows_html = ""
         for p in t_players_sorted:
             is_me = p["player_id"] == highlight_player_id
@@ -994,7 +998,8 @@ def render_phase_score_input(round_name: str, phase_title: str):
     table_scores = {s["player_id"]: s for s in existing_scores if s["table_name"] == table_name}
     seats_in_round = db.get_seats_by_round(round_name)
     table_seats = [s for s in seats_in_round if s["table_name"] == table_name]
-    table_seats.sort(key=lambda x: x["seat_number"])
+    # 運営スタッフ（role == 'admin'）を最上位に配置し、座席番号順にソート
+    table_seats.sort(key=lambda x: (0 if x.get("role") == "admin" else 1, x.get("seat_number", 0)))
 
     done_cnt = len(table_scores)
     total_cnt = len(table_seats)
@@ -1023,12 +1028,14 @@ def render_phase_score_input(round_name: str, phase_title: str):
         else:
             st_str = "<span style='color:#94A3B8; font-size:0.82rem; font-weight:600;'>⏳ 未入力</span>"
 
+        role_tag = '<span class="role-badge-admin" style="margin-left:6px;">運営</span>' if s_info.get("role") == "admin" else ""
         me_tag = '<span style="font-size:0.7rem; background:#4F46E5; color:#FFF; padding:1px 6px; border-radius:99px; margin-left:5px; font-weight:700;">あなた</span>' if is_me else ""
         st.markdown(
             f'<div style="padding:0.6rem 0.85rem; border-radius:10px; border:{border_style}; background:{bg_style}; margin-bottom:0.38rem; display:flex; justify-content:space-between; align-items:center;">'
             f'<div>'
             f'<span style="font-size:0.8rem; font-weight:800; color:#64748B; margin-right:6px;">{s_info["seat_number"]}番</span>'
             f'<span style="font-weight:700; color:#0F172A;">{s_info["player_name"]}</span>'
+            f'{role_tag}'
             f'{me_tag}'
             f'</div>'
             f'<div>{st_str}</div>'

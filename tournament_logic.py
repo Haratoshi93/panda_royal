@@ -209,12 +209,16 @@ def assign_preliminary_seats(
         target_table = min(available_tables, key=lambda tbl: len(assigned_tables[tbl]))
         assigned_tables[target_table].append(general)
 
-    # 3. 各卓内のプレイヤー席順をシャッフルして席番号(1〜)を付与
+    # 3. 各卓内のプレイヤー席順を割り当て（運営スタッフを先頭席に配置）
     result_assignments: List[Dict[str, Any]] = []
     for tbl in table_names:
         table_players = assigned_tables[tbl]
-        rng.shuffle(table_players)  # 卓内での座る位置もランダム化
-        for seat_idx, p in enumerate(table_players, start=1):
+        tbl_admins = [p for p in table_players if p.get("role") == "admin"]
+        tbl_generals = [p for p in table_players if p.get("role") == "general"]
+        rng.shuffle(tbl_admins)
+        rng.shuffle(tbl_generals)
+        ordered_players = tbl_admins + tbl_generals
+        for seat_idx, p in enumerate(ordered_players, start=1):
             result_assignments.append({
                 "player_id": p["id"],
                 "table_name": tbl,
@@ -341,9 +345,13 @@ def assign_final_seats_with_admin_cutoff(
     for tbl_name, player_list in table_configs:
         if not player_list:
             continue
-        # 卓内での座席番号をランダムに割り当て
-        rng.shuffle(player_list)
-        for seat_num, p in enumerate(player_list, start=1):
+        # 卓内で運営を先頭（1番席〜）、一般をその後に割り当て
+        tbl_admins = [p for p in player_list if p.get("role") == "admin"]
+        tbl_generals = [p for p in player_list if p.get("role") == "general"]
+        rng.shuffle(tbl_admins)
+        rng.shuffle(tbl_generals)
+        ordered_players = tbl_admins + tbl_generals
+        for seat_num, p in enumerate(ordered_players, start=1):
             final_assignments.append({
                 "player_id": p["player_id"],
                 "table_name": tbl_name,
