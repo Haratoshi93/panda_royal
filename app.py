@@ -1199,22 +1199,48 @@ def render_ranking_page():
 # ==============================================================================
 # サブ画面: 座席表一覧 (閲覧用)
 # ==============================================================================
+def get_current_round_from_phase(phase: str) -> str:
+    """現在の大会進行フェーズから該当するラウンド名を判定します。"""
+    if "予選２" in phase or "予選2" in phase:
+        return "予選2"
+    elif "決勝" in phase or phase == PHASE_RESULT:
+        return "決勝"
+    return "予選1"
+
+
 def render_seats_page():
+    current_phase = db.get_setting("current_phase", PHASE_ENTRY)
+    active_round = get_current_round_from_phase(current_phase)
+    rounds = ["予選1", "予選2", "決勝"]
+    default_idx = rounds.index(active_round) if active_round in rounds else 0
+
     st.markdown(
-        '<div class="surface-card">'
-        '<div class="section-title">🪑 ラウンド別 座席表一覧</div>'
-        '<div class="section-desc" style="margin-bottom:0;">'
-        '各ラウンドのテーブル割り当てと着席番号を確認できます。'
-        '</div>'
-        '</div>',
+        f'<div class="surface-card" style="margin-bottom:0.75rem;">'
+        f'<div style="display:flex; justify-content:space-between; align-items:center;">'
+        f'<div class="section-title">🪑 座席表一覧</div>'
+        f'<span style="font-size:0.75rem; background:#EEF2FF; color:#4F46E5; font-weight:800; padding:2px 8px; border-radius:99px; border:1px solid #C7D2FE;">進行中: {active_round}</span>'
+        f'</div>'
+        f'<div class="section-desc" style="margin-bottom:0.4rem;">'
+        f'現在の大会進行（{current_phase}）に応じた座席を自動表示しています。'
+        f'</div>'
+        f'</div>',
         unsafe_allow_html=True,
     )
 
-    round_tabs = st.tabs(["1️⃣ 予選1", "2️⃣ 予選2", "🏆 決勝"])
-    for idx, r_name in enumerate(["予選1", "予選2", "決勝"]):
-        with round_tabs[idx]:
-            seats = db.get_seats_by_round(r_name)
-            render_table_seats_cards(seats)
+    selected_round = st.radio(
+        "表示ラウンド選択",
+        rounds,
+        index=default_idx,
+        horizontal=True,
+        format_func=lambda r: f"🏆 {r}" if r == "決勝" else f"🎲 {r}" + (" (進行中)" if r == active_round else ""),
+        label_visibility="collapsed",
+    )
+
+    seats = db.get_seats_by_round(selected_round)
+    if not seats:
+        st.info(f"💡 {selected_round} の座席データはまだ作成されていません。運営スタッフの抽選完了をお待ちください。")
+    else:
+        render_table_seats_cards(seats)
 
 
 # ==============================================================================
