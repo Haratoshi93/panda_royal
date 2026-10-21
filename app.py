@@ -712,7 +712,7 @@ def render_header_and_nav():
 # 共通UIパーツ: 卓別座席リスト描画
 # ==============================================================================
 def render_table_seats_cards(seats: list, highlight_player_id: int = -1):
-    """卓ごとの座席表をカラーテーマ付きカード＆タブで描画します。"""
+    """卓ごとの座席表を全卓一覧で並べて描画します。"""
     if not seats:
         st.info("まだ座席割り当てデータがありません。")
         return
@@ -720,10 +720,6 @@ def render_table_seats_cards(seats: list, highlight_player_id: int = -1):
     tables: dict = {}
     for s in seats:
         tables.setdefault(s["table_name"], []).append(s)
-
-    table_names = list(tables.keys())
-    tab_labels = [get_table_theme(t)["badge"] for t in table_names] + ["📋 全卓一覧"]
-    tabs = st.tabs(tab_labels)
 
     def _build_table_html(t_name: str, t_players: list) -> str:
         theme = get_table_theme(t_name)
@@ -763,13 +759,8 @@ def render_table_seats_cards(seats: list, highlight_player_id: int = -1):
             f'</div>'
         )
 
-    for idx, t_name in enumerate(table_names):
-        with tabs[idx]:
-            st.markdown(_build_table_html(t_name, tables[t_name]), unsafe_allow_html=True)
-
-    with tabs[-1]:
-        for t_name in table_names:
-            st.markdown(_build_table_html(t_name, tables[t_name]), unsafe_allow_html=True)
+    for t_name, t_players in tables.items():
+        st.markdown(_build_table_html(t_name, t_players), unsafe_allow_html=True)
 
 
 # ==============================================================================
