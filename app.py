@@ -1163,37 +1163,134 @@ def render_ranking_cards_list(rankings: list, target_rounds: list, show_cutoff: 
         )
 
 
-def render_ranking_page():
-    st.markdown(
-        '<div class="surface-card">'
-        '<div class="section-title">📊 総合順位ランキング</div>'
-        '<div class="section-desc" style="margin-bottom:0;">'
-        '順位決定ルール: 順位点（1位10pt〜）の合計優先 ＞ 同点の場合は獲得スコア（素点）合計優先'
-        '</div>'
-        '</div>',
-        unsafe_allow_html=True,
+def render_final_table_results(final_scores: list):
+    """決勝ラウンドの結果をテーブル（卓）ごとに見やすくカード一覧で描画します。"""
+    if not final_scores:
+        st.info("💡 決勝戦のスコアデータはまだ登録されていません。")
+        return
+
+    # 卓ごとにグループ化
+    tables: dict = {}
+    for s in final_scores:
+        tables.setdefault(s["table_name"], []).append(s)
+
+    # 卓の優先順位順（チャンピオン卓 -> シルバー卓 -> ブロンズ卓 -> その他）
+    table_order = ["チャンピオン卓", "シルバー卓", "ブロンズ卓"]
+    sorted_table_names = sorted(
+        tables.keys(),
+        key=lambda x: table_order.index(x) if x in table_order else 99
     )
+
+    for t_name in sorted_table_names:
+        t_scores = tables[t_name]
+        theme = get_table_theme(t_name)
+
+        # 卓内順位順（rank_in_table または スコア降順）
+        t_scores_sorted = sorted(
+            t_scores,
+            key=lambda x: (x.get("rank_in_table") if x.get("rank_in_table") is not None else 99, -x.get("score", 0))
+        )
+
+        rows_html = ""
+        for s in t_scores_sorted:
+            rank = s.get("rank_in_table", 1)
+            rank_badge = "🥇" if rank == 1 else ("🥈" if rank == 2 else ("🥉" if rank == 3 else f"{rank}位"))
+            role_tag = '<span class="role-badge-admin">運営</span>' if s.get("role") == "admin" else ""
+
+            row_bg = "#FFFFFF"
+            border_color = "#E2E8F0"
+            if rank == 1:
+                row_bg = "#FFFBEB"
+                border_color = "#FCD34D"
+
+            pts = s.get("rank_points")
+            pts_str = f"{pts} pt" if pts is not None else "-"
+
+            rows_html += (
+                f'<div style="background:{row_bg}; border:1px solid {border_color}; border-radius:10px; padding:0.55rem 0.85rem; margin-bottom:0.35rem; display:flex; justify-content:space-between; align-items:center;">'
+                f'<div style="display:flex; align-items:center; gap:10px;">'
+                f'<span style="font-weight:900; font-size:1.05rem; min-width:2.2rem; text-align:center;">{rank_badge}</span>'
+                f'<span style="font-size:0.96rem; font-weight:700; color:#0F172A;">{s["player_name"]} {role_tag}</span>'
+                f'</div>'
+                f'<div style="text-align:right;">'
+                f'<div style="font-size:1.05rem; font-weight:800; color:{theme["accent"]};">{s["score"]} 点</div>'
+                f'<div style="font-size:0.75rem; color:#64748B; font-weight:600;">{pts_str}</div>'
+                f'</div>'
+                f'</div>'
+            )
+
+        st.markdown(
+            f'<div style="background:{theme["bg"]}; border:1.5px solid {theme["border"]}; border-radius:16px; padding:0.9rem; margin-bottom:0.85rem;">'
+            f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem; padding:0 0.2rem;">'
+            f'<span style="font-size:1.05rem; font-weight:900; color:{theme["accent"]};">{theme["badge"]} 決勝結果</span>'
+            f'<span style="font-size:0.78rem; font-weight:700; color:#475569; background:#FFFFFF; padding:2px 10px; border-radius:99px; border:1px solid {theme["border"]};">{len(t_scores_sorted)} 名</span>'
+            f'</div>'
+            f'{rows_html}'
+            f'</div>',
+            unsafe_allow_html=True,
+        )
+
+
+def render_ranking_page():
+    current_phase = db.get_setting("current_phase", PHASE_ENTRY)
+    is_result_phase = (current_phase == PHASE_RESULT)
 
     players = db.get_all_players()
     if not players:
+        st.markdown(
+            '<div class="surface-card">'
+            '<div class="section-title">📊 総合順位ランキング</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
         st.info("まだ参加者が登録されていません。")
         return
 
     all_scores = db.get_all_scores_summary()
-    r_tabs = st.tabs(["🔥 予選総合 (予1+予2)", "1️⃣ 予選1のみ", "2️⃣ 予選2のみ", "🏆 全ラウンド総合"])
 
-    with r_tabs[0]:
+    if is_result_phase:
+        # 結果発表フェーズ: 決勝の結果をテーブルごとに表示
+        st.markdown(
+            '<div class="surface-card">'
+            '<div class="section-title">🏆 決勝結果発表（テーブル別）</div>'
+            '<div class="section-desc" style="margin-bottom:0;">'
+            '各決勝テーブルの最終スコアと順位です。'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        final_scores = db.get_scores_by_round("決勝")
+        r_tabs = st.tabs(["🏆 決勝テーブル別結果", "🏅 全ラウンド総合ランキング"])
+
+        with r_tabs[0]:
+            render_final_table_results(final_scores)
+
+        with r_tabs[1]:
+            st.markdown(
+                '<div style="font-size:0.85rem; color:#64748B; margin-bottom:0.5rem; font-weight:600;">'
+                '全ラウンド（予選1・予選2・決勝）を通じた最終総合ランキングです。'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+            rankings_all = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選1", "予選2", "決勝"])
+            render_ranking_cards_list(rankings_all, ["予選1", "予選2", "決勝"], show_cutoff=False)
+
+    else:
+        # エントリー～決勝フェーズまで: 総合ランキングのみ表示
+        st.markdown(
+            '<div class="surface-card">'
+            '<div class="section-title">📊 総合順位ランキング</div>'
+            '<div class="section-desc" style="margin-bottom:0;">'
+            '順位決定ルール: 順位点（1位10pt〜）の合計優先 ＞ 同点の場合は獲得スコア（素点）合計優先'
+            '</div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        # 予選1+予選2の暫定総合順位（決勝進出ラインを表示）
         rk = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選1", "予選2"])
         render_ranking_cards_list(rk, ["予選1", "予選2"], show_cutoff=True)
-    with r_tabs[1]:
-        rk = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選1"])
-        render_ranking_cards_list(rk, ["予選1"], show_cutoff=False)
-    with r_tabs[2]:
-        rk = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選2"])
-        render_ranking_cards_list(rk, ["予選2"], show_cutoff=False)
-    with r_tabs[3]:
-        rk = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選1", "予選2", "決勝"])
-        render_ranking_cards_list(rk, ["予選1", "予選2", "決勝"], show_cutoff=False)
 
 
 # ==============================================================================
