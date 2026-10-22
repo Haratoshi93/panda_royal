@@ -152,22 +152,26 @@ def assign_preliminary_seats(
     players: List[Dict[str, Any]],
     table_names: List[str] = None,
     max_seats_per_table: int = 10,
-    seed: int = None
+    seed: int = None,
+    previous_seats: List[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """
     予選の座席を自動割り当てします。
     
     【ルール】
     - 参加者を「運営(admin)」と「一般(general)」に分ける。
-    - 運営メンバーをシャッフルし、A卓・B卓・C卓に均等（各卓1〜2名）に振り分ける。
-    - 残りの枠に、一般メンバーをシャッフルして割り当てる。各卓最大10名。
-    - 各卓内での席番号(1〜10)を割り当てる。
+    - 運営メンバーをA卓・B卓・C卓に均等（各卓1〜2名）に振り分ける。
+    - 残りの枠に、一般メンバーを割り当てる。各卓最大10名。
+    - previous_seats（予選1などの過去座席情報）が指定されている場合、
+      前回同じ卓だった人同士が再び同じ卓になるペア数（同卓重複）を最小化するように均等分散最適化を行います。
+    - 各卓内での席番号を割り当てる（運営スタッフは先頭席に優先配置）。
     
     Args:
         players: 全参加者リスト
         table_names: 卓名リスト (デフォルト: ['A卓', 'B卓', 'C卓'])
         max_seats_per_table: 各卓の上限人数 (デフォルト: 10)
         seed: 乱数シード（テスト再現用）
+        previous_seats: 前回ラウンドの座席リスト（同卓重複最小化用）
         
     Returns:
         座席割り当てリスト: [{'player_id': int, 'table_name': str, 'seat_number': int}, ...]
@@ -178,36 +182,104 @@ def assign_preliminary_seats(
     rng = random.Random(seed)
 
     # 属性ごとに分離
-    admins = [p for p in players if p["role"] == "admin"]
-    generals = [p for p in players if p["role"] == "general"]
+    admins = [p for p in players if p.get("role") == "admin"]
+    generals = [p for p in players if p.get("role") == "general"]
 
     # それぞれシャッフル
     rng.shuffle(admins)
     rng.shuffle(generals)
 
+    # 過去の座席マップ (player_id -> 直前の卓名)
+    prev_table_map = {}
+    if previous_seats:
+        for s in previous_seats:
+            prev_table_map[s["player_id"]] = s["table_name"]
+
     # 各卓のプレイヤーリスト初期化
     assigned_tables: Dict[str, List[Dict[str, Any]]] = {tbl: [] for tbl in table_names}
 
-    # 1. 運営メンバーを均等（ラウンドロビン）に振り分け
+    # 1. 運営メンバーを均等に振り分け
     for i, admin in enumerate(admins):
-        target_table = table_names[i % len(table_names)]
+        prev_t = prev_table_map.get(admin["id"])
+        # 過去と同卓にならない卓を優先しつつ、現在の運営人数が最少の卓を選択
+        def _admin_priority(tbl: str):
+            curr_admins = sum(1 for p in assigned_tables[tbl] if p.get("role") == "admin")
+            is_same_table = 1 if prev_t and tbl == prev_t else 0
+            return (curr_admins, is_same_table)
+
+        target_table = min(table_names, key=_admin_priority)
         assigned_tables[target_table].append(admin)
 
-    # 2. 残りの枠に一般メンバーを均等に振り分け
-    # 各卓が上限(max_seats_per_table)を超えないようにしつつ、卓ごとの人数ができるだけ均等になるように配置
-    for general in generals:
-        # 最も人数の少ない卓（複数ある場合はシャッフルされた順序で最初のもの）を選択
-        available_tables = [
-            tbl for tbl in table_names
-            if len(assigned_tables[tbl]) < max_seats_per_table
-        ]
-        if not available_tables:
-            # 全卓満席の場合（30名上限超過時）
-            break
+    # 2. 一般メンバーの配分
+    if not prev_table_map:
+        # 予選1などの初回抽選: 単純均等配分
+        for general in generals:
+            available_tables = [
+                tbl for tbl in table_names
+                if len(assigned_tables[tbl]) < max_seats_per_table
+            ]
+            if not available_tables:
+                break
+            target_table = min(available_tables, key=lambda tbl: len(assigned_tables[tbl]))
+            assigned_tables[target_table].append(general)
+    else:
+        # 予選2などの2回目抽選: 同卓重複を最小化する最適化配分
+        # 2-1. 初期均等配分
+        for general in generals:
+            available_tables = [
+                tbl for tbl in table_names
+                if len(assigned_tables[tbl]) < max_seats_per_table
+            ]
+            if not available_tables:
+                break
+            target_table = min(available_tables, key=lambda tbl: len(assigned_tables[tbl]))
+            assigned_tables[target_table].append(general)
 
-        # 人数が最も少ない卓を探す
-        target_table = min(available_tables, key=lambda tbl: len(assigned_tables[tbl]))
-        assigned_tables[target_table].append(general)
+        # 2-2. 局所探索（スワップ）による同卓重複ペナルティ最小化
+        def _calculate_table_overlap_cost(tbl_players: List[Dict[str, Any]]) -> int:
+            origin_counts: Dict[str, int] = {}
+            for p in tbl_players:
+                origin = prev_table_map.get(p["id"])
+                if origin:
+                    origin_counts[origin] = origin_counts.get(origin, 0) + 1
+            cost = 0
+            for cnt in origin_counts.values():
+                cost += cnt * (cnt - 1) // 2
+            return cost
+
+        # 異なる卓同士の一般参加者をランダムに交換し、コストが下がるなら採用
+        for _ in range(600):
+            t1, t2 = rng.sample(table_names, 2)
+            g1_list = [p for p in assigned_tables[t1] if p.get("role") == "general"]
+            g2_list = [p for p in assigned_tables[t2] if p.get("role") == "general"]
+            if not g1_list or not g2_list:
+                continue
+            g1 = rng.choice(g1_list)
+            g2 = rng.choice(g2_list)
+
+            # 交換前コスト
+            cost_before = _calculate_table_overlap_cost(assigned_tables[t1]) + _calculate_table_overlap_cost(assigned_tables[t2])
+
+            # 仮交換
+            assigned_tables[t1].remove(g1)
+            assigned_tables[t1].append(g2)
+            assigned_tables[t2].remove(g2)
+            assigned_tables[t2].append(g1)
+
+            cost_after = _calculate_table_overlap_cost(assigned_tables[t1]) + _calculate_table_overlap_cost(assigned_tables[t2])
+
+            if cost_after < cost_before:
+                # 改善したので採用
+                pass
+            elif cost_after == cost_before and rng.random() < 0.15:
+                # 同等コストならシャッフル維持のため受容
+                pass
+            else:
+                # 悪化したので元に戻す
+                assigned_tables[t1].remove(g2)
+                assigned_tables[t1].append(g1)
+                assigned_tables[t2].remove(g1)
+                assigned_tables[t2].append(g2)
 
     # 3. 各卓内のプレイヤー席順を割り当て（運営スタッフを先頭席に配置）
     result_assignments: List[Dict[str, Any]] = []

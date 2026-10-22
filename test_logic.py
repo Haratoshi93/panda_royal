@@ -39,6 +39,26 @@ for s in seats_p1:
     table_counts[tbl]["total"] += 1
 pprint.pprint(table_counts)
 
+print("\n=== 2-B. 予選2 同卓重複最小化テスト ===")
+seats_p2 = assign_preliminary_seats(test_players, previous_seats=seats_p1, seed=42)
+p1_map = {s["player_id"]: s["table_name"] for s in seats_p1}
+p2_tables = {}
+for s in seats_p2:
+    p2_tables.setdefault(s["table_name"], []).append(s["player_id"])
+
+overlap_pairs = 0
+for tbl, pids in p2_tables.items():
+    from_p1 = {}
+    for pid in pids:
+        orig = p1_map[pid]
+        from_p1[orig] = from_p1.get(orig, 0) + 1
+    for orig, cnt in from_p1.items():
+        overlap_pairs += cnt * (cnt - 1) // 2
+    print(f"  {tbl}の内訳 (予選1の所属卓別): {from_p1}")
+
+print(f"予選2の同卓重複ペア数: {overlap_pairs} (理論最小値36に近いことを確認)")
+assert overlap_pairs <= 38, f"同卓重複ペア数が多すぎます: {overlap_pairs}"
+
 print("\n=== 3. 決勝座席割り当て＆運営足切りテスト ===")
 # 予選総合順位で、上位10名中5名が運営だった場合（上限3名）
 fake_rankings = []

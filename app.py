@@ -1566,8 +1566,8 @@ def render_admin_page():
             # --- 予選2 ---
             p2_seats = db.get_seats_by_round("予選2")
             p2_done = len(p2_seats) > 0
-            with st.expander("🎲 予選2 座席抽選", expanded=p1_done and not p2_done):
-                st.caption("予選2の座席をシャッフル配分します。")
+            with st.expander("🎲 予選2 座席抽選 (同卓重複防止)", expanded=p1_done and not p2_done):
+                st.caption("予選1で同じ卓だった人との再同卓を最小限に抑え、新しい対戦相手と当たりやすいように均等分散抽選します。")
                 if p2_done:
                     summary_text = _summarize_table_counts(p2_seats)
                     st.success(f"✅ 予選2の座席抽選は完了しています\n\n割り当て済み: 合計 {len(p2_seats)}名 ({summary_text})")
@@ -1576,9 +1576,14 @@ def render_admin_page():
 
                 btn_p2_text = "🔄 予選2の座席を再抽選する（上書き）" if p2_done else "🚀 予選2の座席を抽選する"
                 if st.button(btn_p2_text, type="primary" if not p2_done else "secondary", use_container_width=True, key="adm_p2_btn"):
-                    assignments = logic.assign_preliminary_seats(players, table_names=["A卓", "B卓", "C卓"])
+                    p1_seats = db.get_seats_by_round("予選1")
+                    assignments = logic.assign_preliminary_seats(
+                        players,
+                        table_names=["A卓", "B卓", "C卓"],
+                        previous_seats=p1_seats,
+                    )
                     db.save_seats("予選2", assignments)
-                    st.session_state["lottery_success_msg"] = f"✅ 予選2の座席抽選が完了しました！（合計 {len(assignments)}名をA卓・B卓・C卓に割り当てました）"
+                    st.session_state["lottery_success_msg"] = f"✅ 予選2の座席抽選が完了しました！（予選1の同卓重複を最小化して合計 {len(assignments)}名を配分しました）"
                     st.rerun()
 
             # --- 決勝 ---
