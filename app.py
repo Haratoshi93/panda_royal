@@ -1327,40 +1327,26 @@ def render_admin_page():
         current_phase = PHASE_ENTRY
     curr_idx = ALL_PHASES.index(current_phase)
 
-    # セレクトボックスと現在のDB値の同期
-    if "admin_phase_selector_box" not in st.session_state or st.session_state["admin_phase_selector_box"] != current_phase:
-        st.session_state["admin_phase_selector_box"] = current_phase
-
-    def on_phase_select():
-        chosen = st.session_state.get("admin_phase_selector_box")
-        if chosen and chosen != current_phase:
-            db.set_setting("current_phase", chosen)
-
-    def set_phase_and_sync(target_phase: str):
-        db.set_setting("current_phase", target_phase)
-        st.session_state["admin_phase_selector_box"] = target_phase
-
-    st.markdown("##### 🚩 大会フェーズ進行コントロール")
+    st.markdown(
+        f'<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.6rem;">'
+        f'<span style="font-weight:800; font-size:0.95rem; color:#0F172A;">🚩 大会フェーズ進行</span>'
+        f'<span style="font-size:0.8rem; background:#EEF2FF; color:#4F46E5; font-weight:800; padding:3px 10px; border-radius:99px; border:1px solid #C7D2FE;">現在: {current_phase}</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
     col_prev, col_next = st.columns(2)
     with col_prev:
         if curr_idx > 0:
             prev_phase = ALL_PHASES[curr_idx - 1]
             if st.button(f"⬅️ 戻す: {prev_phase}", use_container_width=True, key="btn_phase_prev"):
-                set_phase_and_sync(prev_phase)
+                db.set_setting("current_phase", prev_phase)
                 st.rerun()
     with col_next:
         if curr_idx < len(ALL_PHASES) - 1:
             next_phase = ALL_PHASES[curr_idx + 1]
             if st.button(f"次へ進める ➔ {next_phase}", use_container_width=True, type="primary", key="btn_phase_next"):
-                set_phase_and_sync(next_phase)
+                db.set_setting("current_phase", next_phase)
                 st.rerun()
-
-    st.selectbox(
-        "フェーズを直接指定して切り替え",
-        ALL_PHASES,
-        key="admin_phase_selector_box",
-        on_change=on_phase_select,
-    )
 
     players = db.get_all_players()
     total_count = len(players)
