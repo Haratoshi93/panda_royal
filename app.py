@@ -1527,9 +1527,25 @@ def render_admin_page():
 
     # タブ2: 座席抽選
     with admin_tabs[1]:
-        if len(players) < 3:
-            st.warning("⚠️ 座席抽選には3名以上の参加者が必要です。")
+        admin_players = [p for p in players if p.get("role") == "admin"]
+        general_players = [p for p in players if p.get("role") == "general"]
+        admin_count = len(admin_players)
+        total_players = len(players)
+        table_count = 3  # A卓, B卓, C卓
+
+        # セーフティ1: 参加人数チェック
+        if total_players < table_count:
+            st.error(f"⚠️ 座席抽選を行うには最低{table_count}名以上の参加者が必要です（現在: {total_players}名）。")
+        # セーフティ2: 運営スタッフ3名以上チェック
+        elif admin_count < table_count:
+            st.error(
+                f"🚨 【セーフティ保護】運営スタッフが不足しています（現在: {admin_count}名 / 必要: 最低{table_count}名）。\n\n"
+                f"全3卓（A卓・B卓・C卓）に必ず運営スタッフを1名以上配置するため、「👥 タグ付け」タブにて運営スタッフを{table_count}名以上指定してください。\n\n"
+                f"※運営スタッフが{table_count}名以上登録されるまで、座席抽選機能は安全のため保護ロックされます。"
+            )
         else:
+            st.caption(f"🛡️ セーフティ確認済み: 参加者 {total_players}名（運営 {admin_count}名 / 一般 {len(general_players)}名）➔ 全卓へ均等配分可能です")
+
             # 直前に実行された抽選の成功メッセージ表示
             last_lottery_msg = st.session_state.pop("lottery_success_msg", None)
             if last_lottery_msg:
@@ -1548,11 +1564,14 @@ def render_admin_page():
             # --- 予選1 ---
             p1_seats = db.get_seats_by_round("予選1")
             p1_done = len(p1_seats) > 0
+            p1_scores = db.get_scores_by_round("予選1")
             with st.expander("🎲 予選1 座席抽選", expanded=not p1_done):
                 st.caption("運営スタッフを各卓に均等配分し、一般参加者をシャッフル配分します。")
                 if p1_done:
                     summary_text = _summarize_table_counts(p1_seats)
                     st.success(f"✅ 予選1の座席抽選は完了しています\n\n割り当て済み: 合計 {len(p1_seats)}名 ({summary_text})")
+                    if p1_scores:
+                        st.caption(f"⚠️ 注意: すでに予選1のスコアが {len(p1_scores)}件 記録されています。再抽選すると座席配置が上書きされます。")
                 else:
                     st.info("⏳ 予選1の座席はまだ未抽選です。")
 
@@ -1566,67 +1585,84 @@ def render_admin_page():
             # --- 予選2 ---
             p2_seats = db.get_seats_by_round("予選2")
             p2_done = len(p2_seats) > 0
+            p2_scores = db.get_scores_by_round("予選2")
             with st.expander("🎲 予選2 座席抽選 (同卓重複防止)", expanded=p1_done and not p2_done):
                 st.caption("予選1で同じ卓だった人との再同卓を最小限に抑え、新しい対戦相手と当たりやすいように均等分散抽選します。")
-                if p2_done:
-                    summary_text = _summarize_table_counts(p2_seats)
-                    st.success(f"✅ 予選2の座席抽選は完了しています\n\n割り当て済み: 合計 {len(p2_seats)}名 ({summary_text})")
+                if not p1_done:
+                    st.warning("⚠️ 【セーフティ制御】予選1の座席抽選がまだ完了していません。先に「予選1 座席抽選」を実行してください。")
+                    st.button("🚫 予選1の抽選完了後に解放されます", disabled=True, use_container_width=True, key="adm_p2_disabled_btn")
                 else:
-                    st.info("⏳ 予選2の座席はまだ未抽選です。")
+                    if p2_done:
+                        summary_text = _summarize_table_counts(p2_seats)
+                        st.success(f"✅ 予選2の座席抽選は完了しています\n\n割り当て済み: 合計 {len(p2_seats)}名 ({summary_text})")
+                        if p2_scores:
+                            st.caption(f"⚠️ 注意: すでに予選2のスコアが {len(p2_scores)}件 記録されています。再抽選すると座席配置が上書きされます。")
+                    else:
+                        st.info("⏳ 予選2の座席はまだ未抽選です。")
 
-                btn_p2_text = "🔄 予選2の座席を再抽選する（上書き）" if p2_done else "🚀 予選2の座席を抽選する"
-                if st.button(btn_p2_text, type="primary" if not p2_done else "secondary", use_container_width=True, key="adm_p2_btn"):
-                    p1_seats = db.get_seats_by_round("予選1")
-                    assignments = logic.assign_preliminary_seats(
-                        players,
-                        table_names=["A卓", "B卓", "C卓"],
-                        previous_seats=p1_seats,
-                    )
-                    db.save_seats("予選2", assignments)
-                    st.session_state["lottery_success_msg"] = f"✅ 予選2の座席抽選が完了しました！（予選1の同卓重複を最小化して合計 {len(assignments)}名を配分しました）"
-                    st.rerun()
+                    btn_p2_text = "🔄 予選2の座席を再抽選する（上書き）" if p2_done else "🚀 予選2の座席を抽選する"
+                    if st.button(btn_p2_text, type="primary" if not p2_done else "secondary", use_container_width=True, key="adm_p2_btn"):
+                        p1_seats = db.get_seats_by_round("予選1")
+                        assignments = logic.assign_preliminary_seats(
+                            players,
+                            table_names=["A卓", "B卓", "C卓"],
+                            previous_seats=p1_seats,
+                        )
+                        db.save_seats("予選2", assignments)
+                        st.session_state["lottery_success_msg"] = f"✅ 予選2の座席抽選が完了しました！（予選1の同卓重複を最小化して合計 {len(assignments)}名を配分しました）"
+                        st.rerun()
 
             # --- 決勝 ---
             final_seats = db.get_seats_by_round("決勝")
             final_done = len(final_seats) > 0
             with st.expander("🏆 決勝ラウンド座席抽選 (運営足切り付き)", expanded=p2_done):
-                curr_limit = int(db.get_setting("admin_limit_champion", "3"))
-                admin_limit = st.slider(
-                    "👑 チャンピオン卓の運営上限人数",
-                    min_value=0,
-                    max_value=10,
-                    value=curr_limit,
-                )
-                if admin_limit != curr_limit:
-                    db.set_setting("admin_limit_champion", str(admin_limit))
-
-                if final_done:
-                    summary_text = _summarize_table_counts(final_seats)
-                    st.success(f"✅ 決勝ラウンドの座席抽選は完了しています\n\n割り当て済み: 合計 {len(final_seats)}名 ({summary_text})")
+                if not p1_done or not p2_done:
+                    st.warning("⚠️ 【セーフティ制御】予選1および予選2の座席抽選が完了していません。先に予選の抽選を行ってください。")
+                    st.button("🚫 予選抽選の完了後に解放されます", disabled=True, use_container_width=True, key="adm_final_disabled_seats")
                 else:
-                    st.info("⏳ 決勝ラウンドの座席はまだ未抽選です。")
-
-                last_swaps = st.session_state.get("final_swap_history")
-                if last_swaps:
-                    st.markdown("##### 🔄 運営足切り・繰り上げ入替結果:")
-                    for sw in last_swaps:
-                        st.info(
-                            f"🔻 運営 {sw['demoted_admin']} (予選{sw['demoted_rank']}位) ➔ シルバー卓へ降格\n\n"
-                            f"🔺 一般 {sw['promoted_general']} (予選{sw['promoted_rank']}位) ➔ チャンピオン卓へ繰上昇格！"
-                        )
-
-                btn_final_text = "🔄 決勝座席を再抽選する（上書き）" if final_done else "🏆 決勝座席抽選を実行"
-                if st.button(btn_final_text, type="primary" if not final_done else "secondary", use_container_width=True, key="adm_final_btn"):
                     all_scores = db.get_all_scores_summary()
-                    overall_rankings = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選1", "予選2"])
-                    final_assignments, swap_history = logic.assign_final_seats_with_admin_cutoff(
-                        overall_rankings,
-                        admin_limit_champion=admin_limit,
-                    )
-                    db.save_seats("決勝", final_assignments)
-                    st.session_state["lottery_success_msg"] = f"✅ 決勝ラウンドの座席抽選が完了しました！（合計 {len(final_assignments)}名割り当て済み）"
-                    st.session_state["final_swap_history"] = swap_history
-                    st.rerun()
+                    p1_sc_cnt = sum(1 for s in all_scores if s["round"] == "予選1")
+                    p2_sc_cnt = sum(1 for s in all_scores if s["round"] == "予選2")
+                    if p1_sc_cnt == 0 and p2_sc_cnt == 0:
+                        st.warning("⚠️ 【セーフティ制御】予選のスコア結果がまだ入力されていません。予選の対戦・スコア入力を終えてから決勝抽選を行ってください。")
+                        st.button("🚫 予選スコア入力完了後に解放されます", disabled=True, use_container_width=True, key="adm_final_disabled_scores")
+                    else:
+                        curr_limit = int(db.get_setting("admin_limit_champion", "3"))
+                        admin_limit = st.slider(
+                            "👑 チャンピオン卓の運営上限人数",
+                            min_value=0,
+                            max_value=10,
+                            value=curr_limit,
+                        )
+                        if admin_limit != curr_limit:
+                            db.set_setting("admin_limit_champion", str(admin_limit))
+
+                        if final_done:
+                            summary_text = _summarize_table_counts(final_seats)
+                            st.success(f"✅ 決勝ラウンドの座席抽選は完了しています\n\n割り当て済み: 合計 {len(final_seats)}名 ({summary_text})")
+                        else:
+                            st.info("⏳ 決勝ラウンドの座席はまだ未抽選です。")
+
+                        last_swaps = st.session_state.get("final_swap_history")
+                        if last_swaps:
+                            st.markdown("##### 🔄 運営足切り・繰り上げ入替結果:")
+                            for sw in last_swaps:
+                                st.info(
+                                    f"🔻 運営 {sw['demoted_admin']} (予選{sw['demoted_rank']}位) ➔ シルバー卓へ降格\n\n"
+                                    f"🔺 一般 {sw['promoted_general']} (予選{sw['promoted_rank']}位) ➔ チャンピオン卓へ繰上昇格！"
+                                )
+
+                        btn_final_text = "🔄 決勝座席を再抽選する（上書き）" if final_done else "🏆 決勝座席抽選を実行"
+                        if st.button(btn_final_text, type="primary" if not final_done else "secondary", use_container_width=True, key="adm_final_btn"):
+                            overall_rankings = logic.calculate_overall_ranking(players, all_scores, target_rounds=["予選1", "予選2"])
+                            final_assignments, swap_history = logic.assign_final_seats_with_admin_cutoff(
+                                overall_rankings,
+                                admin_limit_champion=admin_limit,
+                            )
+                            db.save_seats("決勝", final_assignments)
+                            st.session_state["lottery_success_msg"] = f"✅ 決勝ラウンドの座席抽選が完了しました！（合計 {len(final_assignments)}名割り当て済み）"
+                            st.session_state["final_swap_history"] = swap_history
+                            st.rerun()
 
     # タブ3: 入力進捗
     with admin_tabs[2]:
