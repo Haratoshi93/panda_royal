@@ -125,6 +125,9 @@ ALL_PHASES = [
     PHASE_RESULT,
 ]
 
+# 大会定員上限 (3卓 x 最大10名)
+MAX_TOURNAMENT_PLAYERS = 30
+
 # 卓ごとのカラーテーマ定義
 TABLE_THEMES = {
     "A卓": {"bg": "#EFF6FF", "border": "#93C5FD", "accent": "#2563EB", "badge": "🟦 A卓"},
@@ -768,19 +771,65 @@ def render_table_seats_cards(seats: list, highlight_player_id: int = -1):
 
 
 # ==============================================================================
+# 共通UIヘルパー: 「自分の名前」自動記憶セレクター
+# ==============================================================================
+def remember_player_name(name: str) -> None:
+    """選択または登録した自分の名前をセッションに記憶し、他ラウンドの選択欄とも同期します。"""
+    clean_name = name.strip()
+    if not clean_name:
+        return
+    st.session_state["remembered_player_name"] = clean_name
+    for k in (
+        "seat_sel_予選1",
+        "seat_sel_予選2",
+        "seat_sel_決勝",
+        "score_sel_予選1",
+        "score_sel_予選2",
+        "score_sel_決勝",
+    ):
+        if k in st.session_state:
+            st.session_state[k] = clean_name
+
+
+def render_player_selector_with_memory(players: list, widget_key: str) -> str:
+    """記憶された自分の名前を初期選択した状態でプレイヤー選択欄を描画します。"""
+    placeholder = "-- あなたのお名前を選択してください --"
+    player_names = [p["name"] for p in players]
+    display_list = [placeholder] + player_names
+
+    if widget_key not in st.session_state or st.session_state[widget_key] not in display_list:
+        rem = st.session_state.get("remembered_player_name", "")
+        st.session_state[widget_key] = rem if rem in player_names else placeholder
+
+    def _sync_selected_player():
+        val = st.session_state.get(widget_key, placeholder)
+        if val != placeholder:
+            remember_player_name(val)
+        else:
+            st.session_state.pop("remembered_player_name", None)
+
+    return st.selectbox(
+        "👤 あなたのお名前",
+        display_list,
+        key=widget_key,
+        on_change=_sync_selected_player,
+    )
+
+
+# ==============================================================================
 # 1. エントリーフェーズ画面
 # ==============================================================================
 def render_phase_entry():
     players = db.get_all_players()
     current_count = len(players)
-    pct = min(int((current_count / 30.0) * 100), 100)
+    pct = min(int((current_count / float(MAX_TOURNAMENT_PLAYERS)) * 100), 100)
 
     st.markdown(
         f'<div class="surface-card">'
         f'<div class="section-header">'
         f'<div class="section-title">📝 参加者エントリー受付</div>'
         f'<span style="font-size: 1.05rem; font-weight: 900; color: #4F46E5;">'
-        f'{current_count} <span style="font-size: 0.8rem; color: #64748B; font-weight: 600;">/ 30名</span>'
+        f'{current_count} <span style="font-size: 0.8rem; color: #64748B; font-weight: 600;">/ {MAX_TOURNAMENT_PLAYERS}名</span>'
         f'</span>'
         f'</div>'
         f'<div class="custom-progress-bg"><div class="custom-progress-fill" style="width: {pct}%;"></div></div>'
@@ -791,30 +840,36 @@ def render_phase_entry():
         unsafe_allow_html=True,
     )
 
-    if current_count >= 30:
-        st.warning("⚠️ 定員（30名）に達しています。")
+    entry_msg = st.session_state.pop("entry_success_msg", None)
+    if entry_msg:
+        st.balloons()
+        st.success(entry_msg)
 
-    with st.form("phase_entry_form", clear_on_submit=True):
-        tsunagate_id = st.text_input("つなげーとID (必須)", placeholder="例: panda_1234")
-        player_name = st.text_input("ニックネーム / 表示名 (必須)", placeholder="例: たろう")
+    if current_count >= MAX_TOURNAMENT_PLAYERS:
+        st.warning(
+            f"🈵 定員（{MAX_TOURNAMENT_PLAYERS}名）に達したため、新規エントリー受付を締め切りました。"
+            "変更やキャンセルが必要な場合は運営スタッフまでお声がけください。"
+        )
+    else:
+        with st.form("phase_entry_form", clear_on_submit=True):
+            tsunagate_id = st.text_input("つなげーとID (必須)", placeholder="例: panda_1234")
+            player_name = st.text_input("ニックネーム / 表示名 (必須)", placeholder="例: たろう")
 
-        submitted = st.form_submit_button("✅ 大会にエントリーする", use_container_width=True, type="primary")
+            submitted = st.form_submit_button("✅ 大会にエントリーする", use_container_width=True, type="primary")
 
-        if submitted:
-            if not tsunagate_id.strip():
-                st.error("つなげーとIDを入力してください。")
-                return
-            if not player_name.strip():
-                st.error("ニックネームを入力してください。")
-                return
-
-            ok, msg = db.add_player(tsunagate_id, player_name, "general")
-            if ok:
-                st.balloons()
-                st.success(f"🎉 {player_name} さんのエントリーが完了しました！")
-                st.rerun()
-            else:
-                st.error(f"❌ {msg}")
+            if submitted:
+                if not tsunagate_id.strip():
+                    st.error("つなげーとIDを入力してください。")
+                elif not player_name.strip():
+                    st.error("ニックネームを入力してください。")
+                else:
+                    ok, msg = db.add_player(tsunagate_id, player_name, "general")
+                    if ok:
+                        remember_player_name(player_name)
+                        st.session_state["entry_success_msg"] = f"🎉 {player_name.strip()} さんのエントリーが完了しました！"
+                        st.rerun()
+                    else:
+                        st.error(f"❌ {msg}")
 
     # エントリー済みメンバー一覧カード
     if players:
@@ -869,11 +924,10 @@ def render_phase_seating(round_name: str, phase_title: str):
         return
 
     player_options = {p["name"]: p for p in players}
-    player_display_list = ["-- あなたのお名前を選択してください --"] + list(player_options.keys())
-    selected_name = st.selectbox("👤 あなたのお名前", player_display_list, key=f"seat_sel_{round_name}")
+    selected_name = render_player_selector_with_memory(players, f"seat_sel_{round_name}")
 
     selected_player_id = -1
-    if selected_name != "-- あなたのお名前を選択してください --":
+    if selected_name != "-- あなたのお名前を選択してください --" and selected_name in player_options:
         selected_player = player_options[selected_name]
         selected_player_id = selected_player["id"]
 
@@ -927,16 +981,20 @@ def render_phase_score_input(round_name: str, phase_title: str):
         unsafe_allow_html=True,
     )
 
+    saved_msg = st.session_state.pop(f"user_score_saved_{round_name}", None)
+    if saved_msg:
+        st.balloons()
+        st.success(saved_msg)
+
     players = db.get_all_players()
     if not players:
         st.warning("参加者が登録されていません。")
         return
 
     player_options = {p["name"]: p for p in players}
-    player_display_list = ["-- あなたのお名前を選択してください --"] + list(player_options.keys())
-    selected_name = st.selectbox("👤 あなたのお名前", player_display_list, key=f"score_sel_{round_name}")
+    selected_name = render_player_selector_with_memory(players, f"score_sel_{round_name}")
 
-    if selected_name == "-- あなたのお名前を選択してください --":
+    if selected_name == "-- あなたのお名前を選択してください --" or selected_name not in player_options:
         return
 
     selected_player = player_options[selected_name]
@@ -969,7 +1027,7 @@ def render_phase_score_input(round_name: str, phase_title: str):
             current_sc = s["score"]
             break
 
-    with st.form("score_input_form"):
+    with st.form(f"score_input_form_{round_name}_{player_id}"):
         default_val = current_sc if current_sc is not None else 0
         input_score = st.number_input(
             f"🎯 {round_name} の獲得スコア（素点）",
@@ -977,12 +1035,17 @@ def render_phase_score_input(round_name: str, phase_title: str):
             max_value=9999,
             value=int(default_val),
             step=1,
+            key=f"user_sc_num_{round_name}_{player_id}",
         )
 
         if current_sc is not None:
             st.caption(f"✅ 現在登録されているスコア: {current_sc} 点（再送信で修正できます）")
 
-        submit_btn = st.form_submit_button("📤 スコアを確定して送信する", use_container_width=True, type="primary")
+        submit_btn = st.form_submit_button(
+            f"📤 {selected_name} さんのスコアを確定して送信する",
+            use_container_width=True,
+            type="primary",
+        )
 
         if submit_btn:
             db.save_score(round_name, player_id, int(input_score), table_name)
@@ -990,8 +1053,9 @@ def render_phase_score_input(round_name: str, phase_title: str):
             calc = logic.calculate_table_ranks_and_points(scs)
             db.update_rank_points_in_db(round_name, calc)
 
-            st.balloons()
-            st.success(f"✅ {round_name} のスコア ({input_score}点) を記録しました！")
+            st.session_state[f"user_score_saved_{round_name}"] = (
+                f"✅ {selected_name} さんの {round_name} スコア ({int(input_score)}点) を記録しました！"
+            )
             st.rerun()
 
     # 同卓メンバーの入力状況カード
@@ -1383,6 +1447,47 @@ def render_admin_qr_section():
 # ==============================================================================
 # 画面4: 管理者ページ (8フェーズ設定コントロール搭載)
 # ==============================================================================
+def get_phase_transition_warnings(current_phase: str, players: list) -> list:
+    """次のフェーズへ進む前に運営へ通知すべき未完了項目（お知らせ）を収集します。"""
+    warnings = []
+    if current_phase == PHASE_ENTRY:
+        if len(players) < 3:
+            warnings.append("参加者がまだ3名未満です。")
+        if sum(1 for p in players if p.get("role") == "admin") < 3:
+            warnings.append("運営スタッフが3名未満です（「タグ付け」タブで3名以上指定してください）。")
+        if len(db.get_seats_by_round("予選1")) == 0:
+            warnings.append("予選1の座席抽選がまだ行われていません（「座席抽選」タブで抽選してから進めるとスムーズです）。")
+    elif current_phase == PHASE_PRELIM1_SEAT:
+        if len(db.get_seats_by_round("予選1")) == 0:
+            warnings.append("予選1の座席がまだ未抽選です。")
+    elif current_phase == PHASE_PRELIM1_SCORE:
+        st1 = len(db.get_seats_by_round("予選1"))
+        sc1 = len(db.get_scores_by_round("予選1"))
+        if st1 > 0 and sc1 < st1:
+            warnings.append(f"予選1のスコア未入力者が {st1 - sc1}名 残っています（{sc1}/{st1}名完了）。")
+        if len(db.get_seats_by_round("予選2")) == 0:
+            warnings.append("予選2の座席抽選がまだ行われていません（「座席抽選」タブで抽選してから進めるとスムーズです）。")
+    elif current_phase == PHASE_PRELIM2_SEAT:
+        if len(db.get_seats_by_round("予選2")) == 0:
+            warnings.append("予選2の座席がまだ未抽選です。")
+    elif current_phase == PHASE_PRELIM2_SCORE:
+        st2 = len(db.get_seats_by_round("予選2"))
+        sc2 = len(db.get_scores_by_round("予選2"))
+        if st2 > 0 and sc2 < st2:
+            warnings.append(f"予選2のスコア未入力者が {st2 - sc2}名 残っています（{sc2}/{st2}名完了）。")
+        if len(db.get_seats_by_round("決勝")) == 0:
+            warnings.append("決勝戦の座席抽選がまだ行われていません（全員のスコア確定後に「座席抽選」タブで抽選してください）。")
+    elif current_phase == PHASE_FINAL_SEAT:
+        if len(db.get_seats_by_round("決勝")) == 0:
+            warnings.append("決勝戦の座席がまだ未抽選です。")
+    elif current_phase == PHASE_FINAL_SCORE:
+        stf = len(db.get_seats_by_round("決勝"))
+        scf = len(db.get_scores_by_round("決勝"))
+        if stf > 0 and scf < stf:
+            warnings.append(f"決勝戦のスコア未入力者が {stf - scf}名 残っています（{scf}/{stf}名完了）。")
+    return warnings
+
+
 def render_admin_page():
     st.markdown(
         '<div class="surface-card">'
@@ -1446,6 +1551,10 @@ def render_admin_page():
                 st.rerun()
 
     players = db.get_all_players()
+    transition_warnings = get_phase_transition_warnings(current_phase, players)
+    if transition_warnings:
+        st.warning("🔔 次へ進める前の確認ポイント:\n" + "\n".join(f"- {w}" for w in transition_warnings))
+
     total_count = len(players)
     admin_count = sum(1 for p in players if p["role"] == "admin")
     gen_count = sum(1 for p in players if p["role"] == "general")
@@ -1500,6 +1609,11 @@ def render_admin_page():
                         st.rerun()
 
         with st.expander("➕ 手動エントリー (代理登録)"):
+            if len(players) >= MAX_TOURNAMENT_PLAYERS:
+                st.warning(
+                    f"⚠️ 現在{MAX_TOURNAMENT_PLAYERS}名に達しています。"
+                    f"{MAX_TOURNAMENT_PLAYERS + 1}名以上になると3卓（最大{MAX_TOURNAMENT_PLAYERS}席）に収まらないためご注意ください。"
+                )
             with st.form("manual_add_form", clear_on_submit=True):
                 m_tid = st.text_input("つなげーとID")
                 m_name = st.text_input("お名前")
@@ -1522,6 +1636,11 @@ def render_admin_page():
                 )
                 if st.button("選択したプレイヤーを削除", use_container_width=True):
                     db.delete_player(del_id)
+                    for r_name in ["予選1", "予選2", "決勝"]:
+                        rem_scs = db.get_scores_by_round(r_name)
+                        if rem_scs:
+                            recalc = logic.calculate_table_ranks_and_points(rem_scs)
+                            db.update_rank_points_in_db(r_name, recalc)
                     st.warning("削除しました。")
                     st.rerun()
 
@@ -1536,6 +1655,12 @@ def render_admin_page():
         # セーフティ1: 参加人数チェック
         if total_players < table_count:
             st.error(f"⚠️ 座席抽選を行うには最低{table_count}名以上の参加者が必要です（現在: {total_players}名）。")
+        # セーフティ1-B: 定員上限超過チェック
+        elif total_players > MAX_TOURNAMENT_PLAYERS:
+            st.error(
+                f"⚠️ 参加人数が定員上限（{MAX_TOURNAMENT_PLAYERS}名）を超えています（現在: {total_players}名）。"
+                f"3卓×最大10名に全員を配分するため、「👥 タグ付け」タブの参加者削除にて{MAX_TOURNAMENT_PLAYERS}名以下に調整してください。"
+            )
         # セーフティ2: 運営スタッフ3名以上チェック
         elif admin_count < table_count:
             st.error(
@@ -1691,6 +1816,83 @@ def render_admin_page():
                 entered_pids = {s["player_id"] for s in r_scores}
                 unentered = [s["player_name"] for s in r_seats if s["player_id"] not in entered_pids]
                 st.caption(f"未入力 ({r_name}): {', '.join(unentered)}")
+
+        st.markdown("---")
+        st.markdown("##### ✏️ スコアの代理入力・修正（運営用）")
+        st.caption("会場のフェーズを切り替えることなく、どのラウンドのスコアでも直接入力・修正できます。")
+
+        adm_sc_msg = st.session_state.pop("adm_score_saved_msg", None)
+        if adm_sc_msg:
+            st.success(adm_sc_msg)
+
+        rounds_list = ["予選1", "予選2", "決勝"]
+        active_r = get_current_round_from_phase(current_phase)
+        default_r_idx = rounds_list.index(active_r) if active_r in rounds_list else 0
+        edit_round = st.radio(
+            "編集するラウンド",
+            rounds_list,
+            index=default_r_idx,
+            horizontal=True,
+            key="adm_score_edit_round_radio",
+        )
+
+        edit_seats = db.get_seats_by_round(edit_round)
+        if not edit_seats:
+            st.info(f"💡 {edit_round} の座席抽選が完了すると、ここからスコアを代理入力できます。")
+        else:
+            edit_scores_map = {s["player_id"]: s for s in db.get_scores_by_round(edit_round)}
+            edit_seats_sorted = sorted(
+                edit_seats,
+                key=lambda x: (x["table_name"], 0 if x.get("role") == "admin" else 1, x["seat_number"]),
+            )
+            seat_by_pid = {s["player_id"]: s for s in edit_seats_sorted}
+            sel_pid = st.selectbox(
+                "対象プレイヤーを選択",
+                [s["player_id"] for s in edit_seats_sorted],
+                format_func=lambda pid: (
+                    f"{'✅ ' + str(edit_scores_map[pid]['score']) + '点' if pid in edit_scores_map else '⏳ 未入力'}"
+                    f" ｜ {seat_by_pid[pid]['table_name']} {seat_by_pid[pid]['seat_number']}番: {seat_by_pid[pid]['player_name']}"
+                ),
+                key=f"adm_edit_pid_{edit_round}",
+            )
+            target_seat = seat_by_pid[sel_pid]
+            existing_sc_obj = edit_scores_map.get(sel_pid)
+            init_score_val = int(existing_sc_obj["score"]) if existing_sc_obj is not None else 0
+
+            with st.form(key=f"adm_score_edit_form_{edit_round}_{sel_pid}"):
+                new_score_val = st.number_input(
+                    f"🎯 {target_seat['player_name']} さんの {edit_round} スコア（{target_seat['table_name']} {target_seat['seat_number']}番席）",
+                    min_value=0,
+                    max_value=9999,
+                    value=init_score_val,
+                    step=1,
+                    key=f"adm_sc_num_{edit_round}_{sel_pid}",
+                )
+                if st.form_submit_button("💾 スコアを保存して順位を再計算する", use_container_width=True, type="primary"):
+                    db.save_score(edit_round, sel_pid, int(new_score_val), target_seat["table_name"])
+                    updated_scs = db.get_scores_by_round(edit_round)
+                    calc = logic.calculate_table_ranks_and_points(updated_scs)
+                    db.update_rank_points_in_db(edit_round, calc)
+                    st.session_state["adm_score_saved_msg"] = (
+                        f"✅ {edit_round}：{target_seat['player_name']} さんのスコアを {int(new_score_val)}点 に更新し、卓内順位を再計算しました！"
+                    )
+                    st.rerun()
+
+            if existing_sc_obj is not None:
+                if st.button(
+                    "🗑️ このプレイヤーのスコアを「未入力」に戻す",
+                    use_container_width=True,
+                    key=f"adm_sc_del_{edit_round}_{sel_pid}",
+                ):
+                    db.delete_score(edit_round, sel_pid)
+                    rem_scs = db.get_scores_by_round(edit_round)
+                    if rem_scs:
+                        calc = logic.calculate_table_ranks_and_points(rem_scs)
+                        db.update_rank_points_in_db(edit_round, calc)
+                    st.session_state["adm_score_saved_msg"] = (
+                        f"↩️ {edit_round}：{target_seat['player_name']} さんのスコアを未入力状態に戻しました。"
+                    )
+                    st.rerun()
 
     # タブ4: QR・URL設定
     with admin_tabs[3]:

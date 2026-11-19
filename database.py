@@ -274,6 +274,18 @@ def save_score(round_name: str, player_id: int, score: int, table_name: str) -> 
     conn.close()
 
 
+def delete_score(round_name: str, player_id: int) -> None:
+    """指定ラウンド・プレイヤーのスコア記録を削除して未入力状態に戻します。"""
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        "DELETE FROM scores WHERE round = ? AND player_id = ?",
+        (round_name, player_id),
+    )
+    conn.commit()
+    conn.close()
+
+
 def get_scores_by_round(round_name: str) -> List[Dict[str, Any]]:
     """指定ラウンドの全スコア一覧を取得します。"""
     conn = get_connection()

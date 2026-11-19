@@ -7,8 +7,8 @@ on:
   schedule:
     # Every 1 hour (UTC). Keeps the app awake and ready for the tournament.
     - cron: '0 * * * *'
-    # Once a month: small commit so GitHub does not disable this schedule after 60 days of no activity.
-    - cron: '0 3 1 * *'
+    # Once a month at 19:00 UTC (04:00 JST): small commit so GitHub does not disable this schedule after 60 days of no activity.
+    - cron: '0 19 1 * *'
   workflow_dispatch:
 
 jobs:
@@ -72,7 +72,7 @@ jobs:
           retention-days: 7
 
   monthly-keepalive-commit:
-    if: github.event.schedule == '0 3 1 * *'
+    if: github.event.schedule == '0 19 1 * *'
     runs-on: ubuntu-latest
     permissions:
       contents: write
